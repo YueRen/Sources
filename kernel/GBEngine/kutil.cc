@@ -392,7 +392,7 @@ void cancelunit (LObject* L,BOOLEAN inNF)
       i++;
       if (p_GetExp(p,i,r) > p_GetExp(h,i,r)) return ; // does not divide
       #ifdef HAVE_RINGS
-      // Note: As long as qring j forbidden if j contains integer (i.e. ground rings are 
+      // Note: As long as qring j forbidden if j contains integer (i.e. ground rings are
       //       domains), no zerodivisor test needed  CAUTION
       if (rField_is_Ring(currRing) && currRing->OrdSgn == -1)
               if(n_DivBy(p_GetCoeff(h,r->cf),lc,r->cf) == 0)
@@ -7016,7 +7016,7 @@ void enterSBba (LObject p,int atS,kStrategy strat, int atR)
   else
     assume(p.sev == pGetShortExpVector(p.p));
   poly newBasisElement = p.p;
-  if (newBasisElement->next==NULL)
+  if (newBasisElement->next==NULL && n_IsUnit(p_GetCoeff(newBasisElement,currRing),currRing->cf))
   {
     throw (void*) newBasisElement;
   }

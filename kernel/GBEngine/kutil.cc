@@ -80,6 +80,8 @@
 
 #define ADIDEBUG 0
 
+#include <exception>
+
 denominator_list DENOMINATOR_LIST=NULL;
 
 
@@ -7013,6 +7015,11 @@ void enterSBba (LObject p,int atS,kStrategy strat, int atR)
     p.sev = pGetShortExpVector(p.p);
   else
     assume(p.sev == pGetShortExpVector(p.p));
+  poly newBasisElement = p.p;
+  if (newBasisElement->next==NULL)
+  {
+    throw (void*) newBasisElement;
+  }
   strat->sevS[atS] = p.sev;
   strat->ecartS[atS] = p.ecart;
   strat->S_2_R[atS] = atR;
@@ -7609,7 +7616,7 @@ void initBuchMora (ideal F,ideal Q,kStrategy strat)
         }
         idDelete(&P);
     }
-  
+
     else
     {
       /*Shdl=*/initSL(F, Q,strat); /*sets also S, ecartS, fromQ */

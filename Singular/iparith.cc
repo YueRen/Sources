@@ -88,6 +88,8 @@
 #include <unistd.h>
 #include <vector>
 
+#include <exception>
+
 lists rDecompose(const ring r);
 ring rCompose(const lists  L, const BOOLEAN check_comp=TRUE);
 
@@ -4979,7 +4981,17 @@ static BOOLEAN jjSTD(leftv res, leftv v)
       w=ivCopy(w);
     }
   }
-  result=kStd(v_id,currQuotient,hom,&w);
+  try
+  {
+    result=kStd(v_id,currQuotient,hom,&w);
+  }
+  catch (const void* monomial)
+  {
+    ideal G = idInit(1);
+    G->m[0] = (poly) monomial;
+    res->data = (void*) G;
+    return FALSE;
+  }
   idSkipZeroes(result);
   res->data = (char *)result;
   if(!TEST_OPT_DEGBOUND) setFlag(res,FLAG_STD);

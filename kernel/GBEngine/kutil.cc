@@ -6918,6 +6918,42 @@ void updateS(BOOLEAN toT,kStrategy strat)
 }
 
 
+static inline long wDeg(poly g, ring r)
+{
+  int n = r->N; int* w = r->wvhdl[0];
+  long d = 0;
+  for (int i=0; i<n; i++)
+    d += w[i]*p_GetExp(g,i+1,r);
+  return d;
+}
+
+
+static bool isInitialFormMonomial(poly g, ring r)
+{
+  if (g->next==NULL)
+    return true;
+
+  long d = wDeg(g,r);
+  if (wDeg(g->next,r)<d && n_IsUnit(p_GetCoeff(g,r),r->cf))
+    return true;
+
+  return false;
+}
+
+
+static bool isInitialFormMonomial(poly g, ring leadring, ring tailring)
+{
+  if (g->next==NULL)
+    return true;
+
+  long d = wDeg(g,leadring);
+  if (wDeg(g->next,tailring)<d && n_IsUnit(p_GetCoeff(g,leadring),leadring->cf))
+    return true;
+
+  return false;
+}
+
+
 /*2
 * -puts p to the standardbasis s at position at
 * -saves the result in S
@@ -7015,10 +7051,55 @@ void enterSBba (LObject p,int atS,kStrategy strat, int atR)
     p.sev = pGetShortExpVector(p.p);
   else
     assume(p.sev == pGetShortExpVector(p.p));
-  poly newBasisElement = p.p;
-  if (newBasisElement->next==NULL && n_IsUnit(p_GetCoeff(newBasisElement,currRing),currRing->cf))
+
+  assume(currRing->cf == strat->tailRing->cf);
+  if (p.p == NULL)
   {
-    throw (void*) newBasisElement;
+    if (p.t_p != NULL)
+    {
+      poly newBasisElement = p.t_p;
+      if (isInitialFormMonomial(newBasisElement,strat->tailRing))
+      {
+        poly gg = newBasisElement;
+        poly g0 = p_One(currRing); poly g1 = g0;
+        p_SetCoeff(g1,p_GetCoeff(gg,strat->tailRing),currRing);
+        for (int i=1; i<=currRing->N; i++)
+          p_SetExp(g1,i,p_GetExp(gg,i,strat->tailRing),currRing);
+
+        for (pIter(gg); gg!=NULL; pIter(gg))
+        {
+          g1->next = p_One(currRing); pIter(g1);
+          p_SetCoeff(g1,p_GetCoeff(gg,strat->tailRing),currRing);
+          for (int i=1; i<=currRing->N; i++)
+            p_SetExp(g1,i,p_GetExp(gg,i,strat->tailRing),currRing);
+        }
+        throw (void*) g0;
+      }
+    }
+  }
+  else
+  {
+    poly newBasisElement = p.p;
+    if (p.t_p == NULL)
+    {
+      if (isInitialFormMonomial(newBasisElement,currRing))
+        throw (void*) newBasisElement;
+    }
+    if (p.t_p != NULL)
+    {
+      if (isInitialFormMonomial(newBasisElement,currRing,strat->tailRing))
+      {
+        poly g0 = p_Head(newBasisElement,currRing); poly g1 = g0;
+        for (poly gg = newBasisElement->next; gg!=NULL; pIter(gg))
+        {
+          g1->next = p_One(currRing); pIter(g1);
+          p_SetCoeff(g1,p_GetCoeff(gg,strat->tailRing),currRing);
+          for (int i=1; i<=currRing->N; i++)
+            p_SetExp(g1,i,p_GetExp(gg,i,strat->tailRing),currRing);
+        }
+        throw (void*) g0;
+      }
+    }
   }
   strat->sevS[atS] = p.sev;
   strat->ecartS[atS] = p.ecart;

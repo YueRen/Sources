@@ -49,6 +49,7 @@ lists PmAdjacencyMatrix2ListOfEdges (polymake::IncidenceMatrix<polymake::NonSymm
 intvec* PmSetInteger2Intvec (polymake::Set<polymake::Integer>* si, bool &b);
 number PmInteger2Number (const polymake::Integer& pi);
 bigintmat* PmMatrixInteger2Bigintmat (polymake::Matrix<polymake::Integer>* mi);
+lists ArrayOfSetIntToListsOfIntvecs(polymake::Array<polymake::Set<int> > A);
 
 /* polymake <- singular */
 

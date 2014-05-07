@@ -133,6 +133,84 @@ BOOLEAN matroidViaCircuits(leftv res, leftv args)
   return TRUE;
 }
 
+BOOLEAN matroidViaBases(leftv res, leftv args)
+{
+  leftv u = args;
+  if ((u!=NULL) && (u->Typ()==LIST_CMD))
+  {
+    lists L = (lists) u->Data();
+    leftv v = u->next;
+    if ((v!=NULL) && (v->Typ()==INT_CMD))
+    {
+      if (v->next==NULL && isListOfIntvecs(L))
+      {
+        int n_elements = (int) (long) v->Data();
+        polymake::Array<polymake::Set<int> > bases = listOfIntvecsToArrayOfSetInt(L);
+        polymake::perl::Object* matroid = new polymake::perl::Object("Matroid");
+        matroid->take("BASES") << bases;
+        matroid->take("N_ELEMENTS") << n_elements;
+        res->rtyp = MATROID_CMD;
+        res->data = (polymake::perl::Object*) matroid;
+        return FALSE;
+      }
+    }
+  }
+  WerrorS("matroidViaBases: unexpected parameters");
+  return TRUE;
+}
+
+BOOLEAN circuits(leftv res, leftv args)
+{
+	leftv u = args;
+	if ((u != NULL) && (u->Typ() == MATROID_CMD) && (u->next == NULL))
+	{
+		polymake::perl::Object* matroid = (polymake::perl::Object*) u->Data();
+		polymake::Array<polymake::Set<int> > circ;
+		lists L;		
+		try
+		{
+			matroid->give("CIRCUITS") >> circ;
+			L = ArrayOfSetIntToListsOfIntvecs(circ);
+		}
+		catch (const std::exception& ex)
+		{
+			WerrorS("ERROR: "); WerrorS(ex.what()); WerrorS("\n");
+			return TRUE;
+		}
+		res->rtyp = LIST_CMD;
+		res->data = (char*) L;
+		return FALSE;
+	}
+	WerrorS("circuits: unexpected parameters");
+	return TRUE;
+}
+
+BOOLEAN bases(leftv res, leftv args)
+{
+	leftv u = args;
+	if ((u != NULL) && (u->Typ() == MATROID_CMD) && (u->next == NULL))
+	{
+		polymake::perl::Object* matroid = (polymake::perl::Object*) u->Data();
+		polymake::Array<polymake::Set<int> > bas;
+		lists L;		
+		try
+		{
+			matroid->give("BASES") >> bas;
+			L = ArrayOfSetIntToListsOfIntvecs(bas);
+		}
+		catch (const std::exception& ex)
+		{
+			WerrorS("ERROR: "); WerrorS(ex.what()); WerrorS("\n");
+			return TRUE;
+		}
+		res->rtyp = LIST_CMD;
+		res->data = (char*) L;
+		return FALSE;
+	}
+	WerrorS("bases: unexpected parameters");
+	return TRUE;
+}
+
 BOOLEAN bergmanFanMatroid(leftv res, leftv args)
 {
 	leftv u = args;
@@ -202,8 +280,11 @@ void matroid_setup(SModulFunctions* p)
   b->blackbox_String=matroid_String;
 
   p->iiAddCproc("polymake.so","matroidViaCircuits",FALSE,matroidViaCircuits);
+	p->iiAddCproc("polymake.so","matroidViaBases",FALSE,matroidViaBases);
+  p->iiAddCproc("polymake.so","circuits",FALSE,circuits);
+  p->iiAddCproc("polymake.so","bases",FALSE,bases);
 	p->iiAddCproc("polymake.so","bergmanFanMatroid",FALSE,bergmanFanMatroid);
-
+	
   MATROID_CMD = setBlackboxStuff(b,"matroid");
 }
 

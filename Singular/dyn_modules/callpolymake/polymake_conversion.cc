@@ -262,6 +262,22 @@ polymake::Matrix<polymake::Integer> Intvec2PmMatrixInteger (const intvec* im)
   return mi;
 }
 
+polymake::Array<polymake::Set<int> > listOfIntvecsToArrayOfSetInt(lists L)
+{
+  int k = lSize(L);
+  polymake::Array<polymake::Set<int> > A(k+1);
+  for (int i=0; i<=k; i++)
+  {
+    intvec* iv = (intvec*) L->m[i].Data();
+    int l = (iv->rows())*(iv->cols());
+    polymake::Set<int> s;
+    for (int j=0; j<l; j++)
+      s = s+(*iv)[j];
+    A[i] = s;
+  }
+  return A;
+}
+
 /* Functions for converting cones and fans in between gfan and polymake,
    Singular shares the same cones and fans with gfan */
 

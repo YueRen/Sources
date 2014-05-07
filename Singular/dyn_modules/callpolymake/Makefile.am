@@ -11,8 +11,8 @@ endif
 # forcefully enable exceptions for polymake
 AM_LDFLAGS	= ${PM_LDFLAGS}
 # -release ${PACKAGE_VERSION}
-  
-SOURCES = polymake_conversion.cc polymake_documentation.cc polymake_wrapper.cc
+
+SOURCES = polymake_conversion.cc polymake_documentation.cc polymake_matroid.cc polymake_wrapper.cc
 
 CXXFLAGS += $(POLYMAKE_CXXFLAGS)
 

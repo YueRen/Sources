@@ -53,6 +53,7 @@ bigintmat* PmMatrixInteger2Bigintmat (polymake::Matrix<polymake::Integer>* mi);
 /* polymake <- singular */
 
 polymake::Matrix<polymake::Integer> Intvec2PmMatrixInteger (const intvec* im);
+polymake::Array<polymake::Set<int> > listOfIntvecsToArrayOfSetInt(lists L);
 
 
 /* Functions for converting cones and fans in between gfan and polymake,

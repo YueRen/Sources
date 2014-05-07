@@ -4,6 +4,8 @@
 #include <Singular/ipid.h>
 #include <Singular/ipshell.h>
 
+#include <Singular/dyn_modules/callgfanlib/bbfan.h>
+
 int MATROID_CMD;
 
 void* matroid_Init(blackbox* /*b*/)
@@ -131,6 +133,62 @@ BOOLEAN matroidViaCircuits(leftv res, leftv args)
   return TRUE;
 }
 
+BOOLEAN bergmanFanMatroid(leftv res, leftv args)
+{
+	leftv u = args;
+	if ((u != NULL) && (u->Typ() == MATROID_CMD))
+	{
+		leftv v = u->next;
+		if ((v != NULL) && (v->Typ() == INT_CMD))
+		{
+			leftv w = v->next;
+			if ((w != NULL) && (w->Typ() == INT_CMD))
+			{
+				polymake::perl::Object* matroid = (polymake::perl::Object*) u->Data();
+				int modOutLin = (int) (long) v->Data();
+				int coord = (int) (long) w->Data();
+				gfan::ZFan* BFan;
+				try
+				{
+					polymake::perl::Object Fan;
+					CallPolymakeFunction("bergman_fan_matroid",*matroid,modOutLin,coord) >> Fan;
+					BFan = PmFan2ZFan(&Fan);
+				}
+				catch (const std::exception& ex)
+				{
+					WerrorS("ERROR: "); WerrorS(ex.what()); WerrorS("\n");
+					return TRUE;
+				}
+				res->rtyp = fanID;
+				res->data = (char*) BFan;
+				return FALSE;
+			}
+		}
+		else if ( v == NULL )
+		{
+			polymake::perl::Object* matroid = (polymake::perl::Object*) u->Data();
+			gfan::ZFan* BFan;
+			try
+			{
+				polymake::perl::Object Fan;
+				CallPolymakeFunction("bergman_fan_matroid", *matroid) >> Fan;
+				BFan = PmFan2ZFan(&Fan);
+			}
+			catch (const std::exception& ex)
+			{
+				WerrorS("ERROR: "); WerrorS(ex.what()); WerrorS("\n");
+				return TRUE;
+			}
+			res->rtyp = fanID;
+			res->data = (char*) BFan;
+			return FALSE;
+		}
+	}
+	WerrorS("bergmanFanMatroid: unexpected parameters");
+	return TRUE;
+}
+
+
 void matroid_setup(SModulFunctions* p)
 {
   blackbox* b = (blackbox*) omAlloc0(sizeof(blackbox));
@@ -144,6 +202,9 @@ void matroid_setup(SModulFunctions* p)
   b->blackbox_String=matroid_String;
 
   p->iiAddCproc("polymake.so","matroidViaCircuits",FALSE,matroidViaCircuits);
+	p->iiAddCproc("polymake.so","bergmanFanMatroid",FALSE,bergmanFanMatroid);
 
   MATROID_CMD = setBlackboxStuff(b,"matroid");
 }
+
+

@@ -1097,7 +1097,7 @@ BOOLEAN intersectCones(leftv res, leftv args)
         return TRUE;
       }
       gfan::ZCone zc3 = gfan::intersection(*zc1, *zc2);
-      zc3.canonicalize();
+      // zc3.canonicalize();
       res->rtyp = coneID;
       res->data = (void *)new gfan::ZCone(zc3);
       return FALSE;
@@ -1116,7 +1116,7 @@ BOOLEAN intersectCones(leftv res, leftv args)
         return TRUE;
       }
       gfan::ZCone zc3 = gfan::intersection(zc1, *zc2);
-      zc3.canonicalize();
+      // zc3.canonicalize();
       res->rtyp = polytopeID;
       res->data = (void *)new gfan::ZCone(zc3);
       return FALSE;
@@ -1139,7 +1139,7 @@ BOOLEAN intersectCones(leftv res, leftv args)
         return TRUE;
       }
       gfan::ZCone zc3 = gfan::intersection(*zc1, zc2);
-      zc3.canonicalize();
+      // zc3.canonicalize();
       res->rtyp = polytopeID;
       res->data = (void *)new gfan::ZCone(zc3);
       return FALSE;
@@ -1157,7 +1157,7 @@ BOOLEAN intersectCones(leftv res, leftv args)
         return TRUE;
       }
       gfan::ZCone zc3 = gfan::intersection(*zc1, *zc2);
-      zc3.canonicalize();
+      // zc3.canonicalize();
       res->rtyp = polytopeID;
       res->data = (void *)new gfan::ZCone(zc3);
       return FALSE;

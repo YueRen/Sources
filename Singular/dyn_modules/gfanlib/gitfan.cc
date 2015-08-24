@@ -22,7 +22,7 @@
 #include <Singular/lists.h>
 #include <Singular/ipshell.h>
 
-#include <coeffs/bigintmat.h>
+#include <coeffs/coeffs.h>
 
 
 namespace gitfan
@@ -368,11 +368,52 @@ BOOLEAN nextAfaceToCheck(leftv res, leftv args)
 }
 
 
+BOOLEAN checkSigns(leftv res, leftv args)
+{
+  leftv u = args;
+  if ((u != NULL) && (u->Typ() == BIGINTMAT_CMD))
+  {
+    leftv v = u->next;
+    if ((v != NULL) && (v->Typ() == INTVEC_CMD) && (v->next == NULL))
+    {
+      bigintmat* interiorPoint = (bigintmat*) u->Data();
+      intvec* hash = (intvec*) v->Data();
+      res->rtyp = INT_CMD;
+      for (int i=0; i<hash->length(); i++)
+      {
+        if ( (*hash)[i]<0 && n_GreaterZero((*interiorPoint)[i],interiorPoint->basecoeffs()) )
+        {
+          res->data = (void*) (long) 0;
+          return FALSE;
+        }
+        if ( (*hash)[i]>0 && !n_IsZero((*interiorPoint)[i],interiorPoint->basecoeffs()) )
+        {
+          number neg = n_Copy((*interiorPoint)[i],interiorPoint->basecoeffs());
+          neg = n_InpNeg(neg,interiorPoint->basecoeffs());
+          if (n_GreaterZero(neg,interiorPoint->basecoeffs()))
+          {
+            n_Delete(&neg,interiorPoint->basecoeffs());
+            res->data = (void*) (long) 0;
+            return FALSE;
+          }
+          n_Delete(&neg,interiorPoint->basecoeffs());
+        }
+      }
+      res->data = (void*) (long) 1;
+      return FALSE;
+    }
+  }
+  WerrorS("nextAfaceToCheck: unexpected parameter");
+  return TRUE;
+}
+
+
 void gitfan_setup(SModulFunctions* p)
 {
   p->iiAddCproc("","refineCones",FALSE,refineCones);
   p->iiAddCproc("","listOfAfacesToCheck",FALSE,listOfAfacesToCheck);
   p->iiAddCproc("","nextAfaceToCheck",FALSE,nextAfaceToCheck);
+  p->iiAddCproc("","checkSigns",FALSE,checkSigns);
 }
 
 #endif

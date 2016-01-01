@@ -13,6 +13,7 @@
 #include <groebnerFan.h>
 #include <groebnerComplex.h>
 #include <tropicalVariety.h>
+#include <tropicalPrevarieties.h>
 
 int tropicalVerboseLevel = 0;
 
@@ -480,6 +481,8 @@ void tropical_setup(SModulFunctions* p)
   p->iiAddCproc("","negativeTropicalStartingPoint",FALSE,negativeTropicalStartingPoint);
   p->iiAddCproc("","nonPositiveTropicalStartingPoint",FALSE,nonPositiveTropicalStartingPoint);
   p->iiAddCproc("","tropicalStartingCone",FALSE,tropicalStartingCone);
+  p->iiAddCproc("","tropicalPrevariety",FALSE,gfanlib_tropicalPrevariety);
+  p->iiAddCproc("","intersectTropicalPrevarieties",FALSE,gfanlib_intersectTropicalPrevarieties);
 #endif //NDEBUG
   // p->iiAddCproc("","ppreduceInitially",FALSE,ppreduceInitially);
   // p->iiAddCproc("","ttreduceInitially",FALSE,ttreduceInitially);

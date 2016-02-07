@@ -65,7 +65,7 @@ class tropicalPrevariety
   void deleteNonMaximalCones();
 };
 
-// tropicalPrevariety intersectTropicalPrevarieties(const tropicalPrevariety &Sigma, const tropicalPrevariety &Delta);
+tropicalPrevariety intersectTropicalPrevarieties(const tropicalPrevariety &Sigma, const tropicalPrevariety &Delta);
 
 BOOLEAN gfanlib_tropicalPrevariety(leftv res, leftv args);
 BOOLEAN gfanlib_intersectTropicalPrevarieties(leftv res, leftv args);

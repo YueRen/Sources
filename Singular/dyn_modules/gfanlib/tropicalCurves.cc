@@ -15,35 +15,6 @@
 #endif
 
 /***
- * Given two sets of cones A,B and a dimensional bound d,
- * computes the intersections of all cones of A with all cones of B,
- * and throws away those of lower dimension than d.
- **/
-static ZConesSortedByDimension intersect(const ZConesSortedByDimension &setA,
-                                         const ZConesSortedByDimension &setB,
-                                         int d=0)
-{
-  if (setA.empty())
-    return setB;
-  if (setB.empty())
-    return setA;
-  ZConesSortedByDimension setAB;
-  for (ZConesSortedByDimension::iterator coneOfA=setA.begin(); coneOfA!=setA.end(); coneOfA++)
-  {
-    for (ZConesSortedByDimension::iterator coneOfB=setB.begin(); coneOfB!=setB.end(); coneOfB++)
-    {
-      gfan::ZCone coneOfIntersection = gfan::intersection(*coneOfA,*coneOfB);
-      if (coneOfIntersection.dimension()>=d)
-      {
-        coneOfIntersection.canonicalize();
-        setAB.insert(coneOfIntersection);
-      }
-    }
-  }
-  return setAB;
-}
-
-/***
  * Given a ring r, weights u, w, and a matrix E, returns a copy of r whose ordering is,
  * for any ideal homogeneous with respect to u, weighted with respect to u and
  * whose tiebreaker is genericly weighted with respect to v and E in the following sense:
@@ -113,15 +84,15 @@ static ring genericlyWeightedOrdering(const ring r, const gfan::ZVector &u, cons
  * of a one-codimensional cone of the tropical variety of I and
  * the initial ideal inI with respect to it, computes the star of the tropical variety in u.
  **/
-ZConesSortedByDimension tropicalStar(ideal inI, const ring r, const gfan::ZVector &u,
-                                     const tropicalStrategy* currentStrategy)
+tropicalPrevariety tropicalStar(ideal inI, const ring r, const gfan::ZVector &u,
+                                const tropicalStrategy* currentStrategy)
 {
   int k = idSize(inI);
   int d = currentStrategy->getExpectedDimension();
 
   /* Compute the common refinement over all tropical varieties
    * of the polynomials in the generating set */
-  ZConesSortedByDimension C = tropicalVarietySortedByDimension(inI->m[0],r,currentStrategy);
+  tropicalPrevariety C = tropicalVarietySortedByDimension(inI->m[0],r,currentStrategy);
   for (int i=1; i<k; i++)
     C = intersect(C,tropicalVarietySortedByDimension(inI->m[i],r,currentStrategy),d);
 
@@ -132,14 +103,10 @@ ZConesSortedByDimension tropicalStar(ideal inI, const ring r, const gfan::ZVecto
    * If the initial ideal is not monomial free, compute a witness for the monomial
    * and compute the common refinement with its tropical variety.
    * If all initial ideals are monomial free, then we have our tropical curve */
-  // gfan::ZFan* zf = toFanStar(C);
-  // std::cout << zf->toString(2+4+8+128) << std::endl;
-  // delete zf;
   for (std::set<gfan::ZCone>::iterator zc=C.begin(); zc!=C.end();)
   {
     gfan::ZVector w = zc->getRelativeInteriorPoint();
     gfan::ZMatrix W = zc->generatorsOfSpan();
-    // std::cout << zc->extremeRays() << std::endl;
 
     ring s = genericlyWeightedOrdering(r,u,w,W,currentStrategy);
     nMapFunc identity = n_SetMap(r->cf,s->cf);

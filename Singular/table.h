@@ -280,6 +280,7 @@ const struct sValCmd1 dArith1[]=
 ,{D(jjVAR1),       VAR_CMD,         POLY_CMD,       INT_CMD       , ALLOW_PLURAL |ALLOW_RING}
 ,{D(jjVARSTR1),    VARSTR_CMD,      STRING_CMD,     INT_CMD       , ALLOW_PLURAL |ALLOW_RING}
 ,{D(jjrVarStr),    VARSTR_CMD,      STRING_CMD,     RING_CMD      , ALLOW_PLURAL |ALLOW_RING}
+,{D(jjViewHelp),   VIEWHELP_CMD,    NONE,           STRING_CMD    , ALLOW_PLURAL |ALLOW_RING}
 ,{D(kWeight),      WEIGHT_CMD,      INTVEC_CMD,     IDEAL_CMD     , ALLOW_PLURAL |ALLOW_RING}
 ,{D(kWeight),      WEIGHT_CMD,      INTVEC_CMD,     MODUL_CMD     , ALLOW_PLURAL |ALLOW_RING}
 ,{D(jjLOAD1),      LOAD_CMD,        NONE,           STRING_CMD    , ALLOW_PLURAL |ALLOW_RING}
@@ -1131,6 +1132,7 @@ cmdnames cmds[] =
   { "varstr",      0, VARSTR_CMD ,        CMD_12},
   { "vdim",        0, VDIM_CMD ,          CMD_1},
   { "vector",      0, VECTOR_CMD ,        RING_DECL},
+  { "viewHelp",    0, VIEWHELP_CMD,       CMD_1},
   { "waitall",     0, WAITALL_CMD ,       CMD_12},
   { "waitfirst",   0, WAIT1ST_CMD ,       CMD_12},
   { "wedge",       0, WEDGE_CMD ,         CMD_2},

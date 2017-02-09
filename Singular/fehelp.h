@@ -9,7 +9,7 @@
  *****************************************************************/
 // if str != NULL display help for str
 // display general help, otherwise
-void feHelp(char* str = NULL);
+void feHelp(char* str = NULL, BOOLEAN tryProcHelp = TRUE);
 // if browser != NULL or feOpt("browser") != NULL
 //    set HelpBrowser to browser
 // otherwise, if browser was already set, leave as is,

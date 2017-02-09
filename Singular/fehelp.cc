@@ -100,7 +100,7 @@ static heBrowser_s *heHelpBrowsers=NULL;
  * Implementation: public function
  *
  *****************************************************************/
-void feHelp(char *str)
+void feHelp(char *str, BOOLEAN tryProcHelp)
 {
   str = strclean(str);
   if (str == NULL) {heBrowserHelp(NULL); return;}
@@ -111,7 +111,7 @@ void feHelp(char *str)
   BOOLEAN key_is_regexp = (strchr(str, '*') != NULL);
 
   // try proc help and library help
-  if (! key_is_regexp && heOnlineHelp(str)) return;
+  if (tryProcHelp && !key_is_regexp && heOnlineHelp(str)) return;
 
   heEntry_s hentry;
   memset(&hentry,0,sizeof(hentry));

@@ -54,4 +54,6 @@ safari-www-idx!xE:/Applications/Safari.app:!open -a /Applications/Safari.app %H
 safari-www!E:/Applications/Safari.app:!open -a /Applications/Safari.app http://www.singular.uni-kl.de/Manual/%v/
 lynx-www-idx!xE:lynx:!lynx %H
 lynx-www!E:lynx:!lynx http://www.singular.uni-kl.de/Manual/%v/
-
+#----------------------------------------------------------------
+# browser for Singular online interface
+interactive-shell!xE:echo:!echo ">>SPECIAL_EVENT_START>>"%H"<<SPECIAL_EVENT_END<<"

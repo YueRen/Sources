@@ -53,6 +53,7 @@
 #include <kernel/ideals.h>
 
 #include <Singular/mod_lib.h>
+#include <Singular/fehelp.h>
 #include <Singular/fevoices.h>
 #include <Singular/tok.h>
 #include <Singular/ipid.h>
@@ -5066,6 +5067,12 @@ static BOOLEAN jjVDIM(leftv res, leftv v)
 {
   assumeStdFlag(v);
   res->data = (char *)(long)scMult0Int((ideal)v->Data(),currRing->qideal);
+  return FALSE;
+}
+static BOOLEAN jjViewHelp(leftv res, leftv u)
+{
+  char* str = (char*) u->Data();
+  feHelp(str,FALSE);
   return FALSE;
 }
 BOOLEAN jjWAIT1ST1(leftv res, leftv u)

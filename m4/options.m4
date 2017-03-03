@@ -325,6 +325,7 @@ AC_DEFUN([SING_BUILTIN_MODULES],
   bi_syzextra=false
   bi_pyobject=false
   bi_gfanlib=false
+  bi_tropical=false
   bi_polymake=false
   bi_python=false
   bi_customstd=false
@@ -364,6 +365,7 @@ AC_DEFUN([SING_BUILTIN_MODULES],
        syzextra ) bi_syzextra=true ;;
        pyobject ) bi_pyobject=true ;;
        gfanlib ) bi_gfanlib=true ;;
+       tropical ) bi_tropical=true ;;
        polymake ) bi_polymake=true ;;
        python_module ) bi_python=true ;;
        customstd ) bi_customstd=true ;;
@@ -406,6 +408,7 @@ AC_DEFUN([SING_BUILTIN_MODULES],
  AM_CONDITIONAL([SI_BUILTIN_SYZEXTRA], [test x$bi_syzextra = xtrue])
  AM_CONDITIONAL([SI_BUILTIN_PYOBJECT], [test x$bi_pyobject = xtrue])
  AM_CONDITIONAL([SI_BUILTIN_GFANLIB], [test x$bi_gfanlib = xtrue])
+ AM_CONDITIONAL([SI_BUILTIN_TROPICAL], [test x$bi_tropical = xtrue])
  AM_CONDITIONAL([SI_BUILTIN_POLYMAKE], [test x$bi_polymake = xtrue])
  AM_CONDITIONAL([SI_BUILTIN_PYTHON_MODULE], [test x$bi_python = xtrue])
  AM_CONDITIONAL([HAVE_PYTHON_MODULE], [test x$ENABLE_PYTHON_MODULE = xyes])

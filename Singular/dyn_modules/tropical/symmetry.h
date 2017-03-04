@@ -1,5 +1,5 @@
-#ifndef TROPICAL_SYMMETRIES_H
-#define TROPICAL_SYMMETRIES_H
+#ifndef TROPICAL_SYMMETRY_H
+#define TROPICAL_SYMMETRY_H
 
 #include <vector>
 #include <set>

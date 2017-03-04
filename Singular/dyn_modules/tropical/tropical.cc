@@ -6,7 +6,7 @@
 #include <Singular/dyn_modules/gfanlib/callgfanlib_conversion.h>
 
 #include <conversion.h>
-#include <symmetries.h>
+#include <symmetry.h>
 
 
 

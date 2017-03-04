@@ -11,7 +11,7 @@
 
 
 
-BOOLEAN generatePermutationGroup(leftv res, leftv args)
+BOOLEAN permutationGroup(leftv res, leftv args)
 {
   leftv u = args;
   if ((u != NULL) && (u->Typ() == LIST_CMD) && (u->next == NULL))
@@ -19,14 +19,14 @@ BOOLEAN generatePermutationGroup(leftv res, leftv args)
     lists generators0 = (lists) u->Data();
 
     std::set<std::vector<int> > generators1 = convertPermutations(generators0);
-    std::set<std::vector<int> > permutationGroup1 = generatePermutationGroup(generators1);
+    std::set<std::vector<int> > permutationGroup1 = permutationGroup(generators1);
     lists permutationGroup0 = convertPermutations(permutationGroup1);
 
     res->rtyp = LIST_CMD;
     res->data = (void*) permutationGroup0;
     return FALSE;
   }
-  WerrorS("generatePermutationGroup: unexpected parameters");
+  WerrorS("permutationGroup: unexpected parameters");
   return TRUE;
 }
 
@@ -61,7 +61,7 @@ BOOLEAN minimalRepresentative(leftv res, leftv args)
 
 extern "C" int SI_MOD_INIT(tropical)(SModulFunctions* p)
 {
-  p->iiAddCproc("","generatePermutationGroup",FALSE,generatePermutationGroup);
+  p->iiAddCproc("","permutationGroup",FALSE,permutationGroup);
   p->iiAddCproc("","minimalRepresentative",FALSE,minimalRepresentative);
   return MAX_TOK;
 }

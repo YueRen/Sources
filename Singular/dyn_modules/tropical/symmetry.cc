@@ -16,7 +16,7 @@ std::vector<int> composePermutations(const std::vector<int> &sigma, const std::v
 }
 
 
-std::set<std::vector<int> > generatePermutationGroup(const std::set<std::vector<int> > &generators)
+std::set<std::vector<int> > permutationGroup(const std::set<std::vector<int> > &generators)
 {
   std::map<std::vector<int>,bool> generatingSubgroup;
 

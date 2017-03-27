@@ -1,6 +1,6 @@
 ACLOCAL_AMFLAGS = -I ../../m4
 
-SOURCES = conversion.cc conversion.h symmetry.cc symmetry.h tropical.cc
+SOURCES = conversion.cc conversion.h singularWrappers.cc singularWrappers.h symmetry.cc symmetry.h valuation.cc valuation.h groebnerCone.cc groebnerCone.h startingCone.cc startingCone.h traversal.cc traversal.h tropical.cc
 
 MY_CPPFLAGS = -I${srcdir} -I${top_srcdir} -I${top_builddir} \
 -I${top_srcdir}/libpolys -I${top_builddir}/libpolys \

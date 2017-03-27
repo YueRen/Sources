@@ -523,6 +523,7 @@ EXAMPLE: example tropicalPointNewton; shows an example
   }
   if (!isTriangularSet(J))
   {
+    "blabla!";
     J = triangL(J)[1];
   }
   tstdlp = timer - tstdlp;
@@ -589,7 +590,7 @@ static proc sumOfLeadExpV(poly f)
 }
 
 
-static proc isTriangularSet(ideal F)
+proc isTriangularSet(ideal F)
 {
   // checks whether F has the right amount of elements
   int n = size(F);
@@ -644,6 +645,7 @@ EXAMPLE: example tropicalVarietyNewton; shows an example
     attrib(I,"isSB",1);
     if (!isTriangularSet(I))
     {
+      "bla!";
       list triangI = triangL(I);
     }
     else
@@ -659,6 +661,7 @@ EXAMPLE: example tropicalVarietyNewton; shows an example
   list Vlocal;
   ideal J;
   list VV;
+  triangI;
   for (ii=1; ii<=size(triangI); ii++)
   {
     J = triangI[ii];
@@ -706,7 +709,20 @@ EXAMPLE: example tropicalVarietyNewton; shows an example
   for (jj=1; jj<=size(VV); jj++)
   {
     VVjj = VV[jj];
-    matrix Vjj[1][size(VVjj)] = VVjj[1..size(VVjj)];
+    k = size(VVjj);
+    matrix Vjj[1][k];
+    for (i=1; i<=k; i++)
+    {
+      if (typeof(VVjj[i]) == "number")
+      {
+        Vjj[1,i] = VVjj[i];
+      }
+      else
+      {
+        Vjj[1,i] = val(leadcoef(VVjj[i]));
+      }
+    }
+    // matrix Vjj[1][size(VVjj)] = VVjj[1..size(VVjj)];
     TI[jj] = -Vjj;
     kill Vjj;
   }
@@ -715,6 +731,7 @@ EXAMPLE: example tropicalVarietyNewton; shows an example
 }
 example
 { "EXAMPLE:"; echo = 2;
+  LIB "poly.lib";
   ring r = (0,t),(z,y,x),lp;
   number uniformizingParameter = t;
   export(uniformizingParameter);
@@ -742,6 +759,7 @@ EXAMPLE: example switchRingsAndComputeInitialIdeal; shows an example
   int tinI = timer;
   option(redSB);
   ideal stdI = satstd(I);
+  attrib(stdI,"isSB",1);
   ideal inI = initial(stdI,w);
   tinI = timer-tinI;
   dbprint("time used computing initial ideal: "+string(tinI));
@@ -854,6 +872,7 @@ static proc extendTropNewton(matrix Ti, int i, number toAdd, intvec toFill)
       Tii[1,i+1..n] = Ti[1,i..n-1];
     }
   }
+
   // extend Tii, inserting 0 in the 1 positions of toFill
   n = n+sum(toFill);
   matrix Tiii[1][n];
@@ -874,7 +893,7 @@ static proc extendTropNewton(matrix Ti, int i, number toAdd, intvec toFill)
 }
 
 
-static proc mergeTropNewton(list T, list Ti, int i, number toAdd, intvec toFill)
+proc mergeTropNewton(list T, list Ti, int i, number toAdd, intvec toFill)
 {
   int ii,j;
   matrix Tii;
@@ -895,6 +914,19 @@ static proc mergeTropNewton(list T, list Ti, int i, number toAdd, intvec toFill)
   }
   return (T);
 }
+example
+{
+  ring r = 0,x,dp;
+  list T;
+  intvec toFill;
+  toFill[105]=0;
+  matrix P7[1][105] = 0,0,0,0,0,0,0,0,0,0,-1,-1,0,0,0,0,-1,-1,-1,-1,0,-1,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,1,0,0,0,0,-1,-1,0,-1,-1,0,-1,-1,-1,0,-1,-1,0,0,0,0,-1,-1,0,0,0,0,-1,-1,0,-1,-1,0,-1,0,0,0,-1,-1,0,-1,-1,0,-1,-1,-1,0,-1,0,0,0,0,-1,-1,-1,-1,0,-1,-1,-1,0,-1,0,-1,-1,0,-1,0;
+  matrix P12[1][105] = 0,0,0,0,0,0,-1,0,0,0,0,-1,0,0,0,0,-1,-1,-1,-1,0,-1,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,1,0,0,0,0,-1,-1,0,-1,-1,0,-1,-1,-1,0,-1,-1,0,0,0,0,-1,-1,0,0,0,0,-1,-1,0,-1,-1,0,-1,0,0,0,-1,-1,0,-1,-1,0,-1,-1,-1,0,-1,0,0,0,0,-1,-1,-1,-1,0,-1,-1,-1,0,-1,0,-1,-1,0,-1,0;
+  list T7 = list(P7);
+  list T12 = list(P12);
+  list TT7 = mergeTropNewton(T,T7,7,1,toFill);
+  list TT12 = mergeTropNewton(TT7,T12,12,1,toFill);
+}
 
 
 proc tropicalLinkNewton(ideal inI)
@@ -907,7 +939,7 @@ NOTE:    if printlevel sufficiently high will print intermediate results
 EXAMPLE: example tropicalLinkNewton; shows an example
 "
 {
-  ring origin=basering;
+  def origin=basering;
   dbprint("reducing to one-dimensional fan");
   cone C0 = homogeneitySpace(inI);
   intmat HH = intmat(generatorsOfLinealitySpace(C0));
@@ -942,6 +974,7 @@ EXAMPLE: example tropicalLinkNewton; shows an example
   int n = nvars(srestr);
   list T;
   int j;
+
   for (i=1; i<=n; i++)
   {
     setring srestr;
@@ -983,14 +1016,15 @@ EXAMPLE: example tropicalLinkNewton; shows an example
     list Tpos = imap(ssubstLP,Tpos);
     list Tneg = imap(ssubstLP,Tneg);
     kill ssubstLP;
-    T = mergeTropNewton(T,Tpos,i,number(1),p);
-    T = mergeTropNewton(T,Tneg,i,number(-1),p);
+    T = mergeTropNewton(T,Tpos,i,number(-1),p);
+    T = mergeTropNewton(T,Tneg,i,number(1),p);
     dbprint("total number of rays: "+string(size(T)));
     kill Tpos;
     kill Tneg;
   }
   setring origin;
-  return(imap(srestr,T));
+  list TT = imap(srestr,T);
+  return(TT);
 }
 example
 { "EXAMPLE:"; echo = 2;
@@ -1098,32 +1132,88 @@ example
 }
 
 
-// disabled routines to check characteristic-freeness of tropical points
+proc saturateWithRespectToVariable(ideal I, int k)
+{
+  ASSUME(1,k>=1);
+  ASSUME(1,k<=nvars(basering));
+
+  def origin = basering;
+  int n = nvars(basering);
+  intvec weightVector = ringlist(origin)[3][1][2];
+
+  string newVars;
+  for (int i=1; i<k; i++)
+  {
+    newVars = newVars+string(var(i))+",";
+  }
+  for (i=k+1; i<=n; i++)
+  {
+    newVars = newVars+string(var(i))+",";
+  }
+  newVars = newVars+string(var(k));
+  execute("ring ringForSaturation = ("+charstr(origin)+"),("+newVars+"),dp;");
+
+  ideal I = satstd(imap(origin,I));
+  if (I==-1)
+  {
+    return (-1);
+  }
+  I = simplify(I,2+4+32);
+
+  setring origin;
+  I = imap(ringForSaturation,I);
+  return (I);
+}
+
+proc stepwiseSaturation(ideal I)
+{
+  if (I!=1)
+  {
+    list variablesToBeSaturated;
+    int l = nvars(basering);
+    for (int i=1; i<=l; i++)
+    { variablesToBeSaturated[i]=l-i+1; }
+
+    while (size(variablesToBeSaturated)>0)
+    {
+      dbprint("variablesToBeSaturated: "+string(variablesToBeSaturated));
+      I = saturateWithRespectToVariable(I,variablesToBeSaturated[1]);
+      variablesToBeSaturated = delete(variablesToBeSaturated,1);
+      if ((I==1) || (I==-1))
+      {
+        break;
+      }
+    }
+  }
+
+  return (I);
+}
 
 
+proc checkForContainmentInTropicalVariety(ideal I, intvec w, int charInt)
+{
+  def origin = basering;
+  intvec wOne = oneVector(nvars(origin));
+  execute("ring rInitialIdeal = ("+string(charInt)+"),("+varstr(origin)+"),(a(wOne),wp(w));");
 
-// proc stepwiseSaturation(ideal I)
-// {
-//   if (I!=1)
-//   {
-//     list variablesToBeSaturated;
-//     int l = nvars(basering);
-//     for (int i=1; i<=l; i++)
-//     { variablesToBeSaturated[i]=l-i+1; }
+  ideal I = imap(origin,I);
+  int tinI = timer;
+  option(redSB);
+  ideal stdI = satstd(I);
+  attrib(stdI,"isSB",1);
+  ideal inI = initial(stdI,w);
+  tinI = timer-tinI;
+  dbprint("time used computing initial ideal: "+string(tinI));
 
-//     while (size(variablesToBeSaturated)>0)
-//     {
-//       dbprint("variablesToBeSaturated: "+string(variablesToBeSaturated));
-//       I = saturateWithRespectToVariable(I,variablesToBeSaturated[1]);
-//       variablesToBeSaturated = delete(variablesToBeSaturated,1);
-//       if ((I==1) || (I==-1))
-//       {
-//         break;
-//       }
-//     }
-//   }
-
-//   return (I);
-// }
+  int tsat = timer;
+  ideal satinI = stepwiseSaturation(inI);
+  tsat = timer-tsat;
+  dbprint("time used computing saturation: "+string(tsat));
 
 
+  export(I);
+  export(stdI);
+  export(inI);
+  export(satinI);
+  return (rInitialIdeal);
+}

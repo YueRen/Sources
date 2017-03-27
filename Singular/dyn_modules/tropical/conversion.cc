@@ -1,8 +1,11 @@
 #include <vector>
 #include <set>
 
-#include <libpolys/misc/intvec.h>
-#include <Singular/lists.h>
+#include <Singular/libsingular.h>
+#include <coeffs/bigintmat.h>
+#include <coeffs/longrat.h>
+#include <coeffs/numbers.h>
+#include <gfanlib/gfanlib.h>
 
 std::set<std::vector<int> > convertPermutations(lists generators0)
 {
@@ -40,4 +43,69 @@ lists convertPermutations(std::set<std::vector<int> > permutationGroup1)
     permutationGroup0->m[i].data = (void*) permutation0;
   }
   return permutationGroup0;
+}
+
+
+int rationalToInt(const gfan::Rational &r)
+{
+  mpq_t i0;
+  mpq_init(i0);
+  r.setGmp(i0);
+
+  assume(mpz_cmp_si(mpq_denref(i0),1)==0);
+
+  int i = mpz_get_si(mpq_numref(i0));
+
+  mpq_canonicalize(i0);
+  mpq_clear(i0);
+
+  return i;
+}
+
+
+gfan::Rational numberToRational(number c, coeffs cf)
+{
+  number n=n_GetNumerator(c,cf);
+  number d=n_GetDenom(c,cf);
+
+  gfan::Rational a = n_Int(n,cf);
+  gfan::Rational b = n_Int(d,cf);
+  n_Delete(&n,cf);
+  n_Delete(&d,cf);
+
+  return (a/b);
+}
+
+
+gfan::ZVector intvecStarToZVector(intvec* v)
+{
+  gfan::ZVector w(v->length());
+  for (int i=0; i<v->length(); i++)
+  {
+    w[i] = gfan::Integer((*v)[i]);
+  }
+  return w;
+}
+
+
+gfan::QMatrix matrixToQMatrix(matrix M, ring r)
+{
+  gfan::QMatrix N(M->rows(),M->cols());
+  for (int i=0; i<M->rows(); i++)
+  {
+    for (int j=0; j<M->cols(); j++)
+    {
+      poly cpoly = MATELEM(M,i+1,j+1);
+      if (cpoly==NULL)
+      {
+        N[i][j] = gfan::Rational((long) 0);
+      }
+      else
+      {
+        number cnumber = p_GetCoeff(cpoly,r);
+        N[i][j] = numberToRational(cnumber,r->cf);
+      }
+    }
+  }
+  return N;
 }

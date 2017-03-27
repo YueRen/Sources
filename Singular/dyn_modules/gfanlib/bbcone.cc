@@ -1803,45 +1803,19 @@ gfan::ZMatrix interiorPointsOfFacets(const gfan::ZCone &zc, const std::set<gfan:
   int r = inequalities.getHeight();
   int c = inequalities.getWidth();
 
-  /* our cone has r facets, if r==0 return empty matrices */
-  gfan::ZMatrix relativeInteriorPoints = gfan::ZMatrix(0,c);
-  if (r==0) return relativeInteriorPoints;
-
   /* next we iterate over each of the r facets,
-   * build the respective cone and add it to the list
-   * this is the i=0 case */
-  gfan::ZMatrix newInequalities = inequalities.submatrix(1,0,r,c);
-  gfan::ZMatrix newEquations = equations;
-  newEquations.appendRow(inequalities[0]);
-  gfan::ZCone facet = gfan::ZCone(newInequalities,newEquations);
-  facet.canonicalize();
-  gfan::ZVector interiorPoint = facet.getRelativeInteriorPoint();
-  if (exceptThese.count(interiorPoint)==0)
-    relativeInteriorPoints.appendRow(interiorPoint);
-
-  /* these are the cases i=1,...,r-2 */
-  for (int i=1; i<r-1; i++)
+   * build the respective cone and add it to the list */
+  gfan::ZMatrix relativeInteriorPoints = gfan::ZMatrix(0,c);
+  for (int i=0; i<r; i++)
   {
-    newInequalities = inequalities.submatrix(0,0,i,c);
-    newInequalities.append(inequalities.submatrix(i+1,0,r,c));
-    newEquations = equations;
+    gfan::ZMatrix newEquations = equations;
     newEquations.appendRow(inequalities[i]);
-    facet = gfan::ZCone(newInequalities,newEquations);
+    gfan::ZCone facet = gfan::ZCone(inequalities,newEquations);
     facet.canonicalize();
-    interiorPoint = facet.getRelativeInteriorPoint();
+    gfan::ZVector interiorPoint = facet.getRelativeInteriorPoint();
     if (exceptThese.count(interiorPoint)==0)
       relativeInteriorPoints.appendRow(interiorPoint);
   }
-
-  /* this is the i=r-1 case */
-  newInequalities = inequalities.submatrix(0,0,r-1,c);
-  newEquations = equations;
-  newEquations.appendRow(inequalities[r-1]);
-  facet = gfan::ZCone(newInequalities,newEquations);
-  facet.canonicalize();
-  interiorPoint = facet.getRelativeInteriorPoint();
-  if (exceptThese.count(interiorPoint)==0)
-    relativeInteriorPoints.appendRow(interiorPoint);
 
   return relativeInteriorPoints;
 }

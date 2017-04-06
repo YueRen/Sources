@@ -623,6 +623,24 @@ proc isTriangularSet(ideal F)
 }
 
 
+proc computeTriangularDecompositionIfNecessary(ideal I)
+{
+  if (isTriangularSet(I))
+  {
+    return (list(I));
+  }
+
+  I = satstd(I);
+  attrib(I,"isSB",1);
+  if (isTriangularSet(I))
+  {
+    return (list(I));
+  }
+
+  return (triangL(I));
+}
+
+
 proc tropicalVarietyNewton(ideal I)
 "USAGE:   tropicalVarietyNewton(I); I ideal
 RETURN:  matrix, a matrix containing all elements of the tropical variety
@@ -639,29 +657,12 @@ EXAMPLE: example tropicalVarietyNewton; shows an example
     ERROR("tropicalVarietyNewton: order must be lp");
   }
 
-  if (!isTriangularSet(I))
-  {
-    I = satstd(I);
-    attrib(I,"isSB",1);
-    if (!isTriangularSet(I))
-    {
-      "bla!";
-      list triangI = triangL(I);
-    }
-    else
-    {
-      list triangI = I;
-    }
-  }
-  else
-  {
-    list triangI = I;
-  }
+  list triangI = computeTriangularDecompositionIfNecessary(I);
+
   int i,ii,j,jj,k,l;
   list Vlocal;
   ideal J;
   list VV;
-  triangI;
   for (ii=1; ii<=size(triangI); ii++)
   {
     J = triangI[ii];
@@ -940,7 +941,7 @@ EXAMPLE: example tropicalLinkNewton; shows an example
 "
 {
   def origin=basering;
-  dbprint("reducing to one-dimensional fan");
+  // dbprint("reducing to one-dimensional fan");
   cone C0 = homogeneitySpace(inI);
   intmat HH = intmat(generatorsOfLinealitySpace(C0));
   matrix H = gauss_nf(HH);
@@ -968,7 +969,7 @@ EXAMPLE: example tropicalLinkNewton; shows an example
   ideal inI = resMap(inI);
   inI = satstd(inI);
 
-  dbprint("intersecting with pairs of affine hyperplanes");
+  // dbprint("intersecting with pairs of affine hyperplanes");
   ideal substImagePos;
   ideal substImageNeg;
   int n = nvars(srestr);
@@ -992,11 +993,11 @@ EXAMPLE: example tropicalLinkNewton; shows an example
     {
       setring srestr;
       kill ssubstDP;
-      dbprint(string(i)+": empty");
+      // dbprint(string(i)+": empty");
       i++;
       continue;
     }
-    dbprint(string(i)+": non-empty, computing tropical variety");
+    // dbprint(string(i)+": non-empty, computing tropical variety");
 
     setring srestr;
     kill ssubstDP;
@@ -1007,18 +1008,33 @@ EXAMPLE: example tropicalLinkNewton; shows an example
     ideal inIPos = std(substMapPos(inI));
     number uniformizingParameter=t;
     export(uniformizingParameter);
-    list Tpos = tropicalVarietyNewton(inIPos);
+    if (deg(inIPos)>1)
+    {
+      list Tpos = tropicalVarietyNewtonWithMagma(inIPos);
+    }
+    else
+    {
+      list Tpos = tropicalVarietyNewton(inIPos);
+    }
     ideal substImageNeg = imap(srestr,substImageNeg);
     map substMapNeg = srestr,substImageNeg;
     ideal inINeg = std(substMapNeg(inI));
-    list Tneg = tropicalVarietyNewton(inINeg);
+    if (deg(inINeg)>1)
+    {
+      "calling magma...";
+      list Tneg = tropicalVarietyNewtonWithMagma(inINeg);
+    }
+    else
+    {
+      list Tneg = tropicalVarietyNewton(inINeg);
+    }
     setring srestr;
     list Tpos = imap(ssubstLP,Tpos);
     list Tneg = imap(ssubstLP,Tneg);
     kill ssubstLP;
     T = mergeTropNewton(T,Tpos,i,number(-1),p);
     T = mergeTropNewton(T,Tneg,i,number(1),p);
-    dbprint("total number of rays: "+string(size(T)));
+    // dbprint("total number of rays: "+string(size(T)));
     kill Tpos;
     kill Tneg;
   }
@@ -1132,88 +1148,153 @@ example
 }
 
 
-proc saturateWithRespectToVariable(ideal I, int k)
+proc initializeMagmaFile(string filename, int numberOfVariables)
 {
-  ASSUME(1,k>=1);
-  ASSUME(1,k<=nvars(basering));
+  write(":w "+filename+".m", "Attach(\"solve.m\");");
+  write(":a "+filename+".m", "A := AlgebraicClosure();");
+  write(":a "+filename+".m", "Pt<t> := PuiseuxSeriesRing(A);");
+  write(":a "+filename+".m", "M := PolynomialRing(Pt, "+string(numberOfVariables)+");");
+}
 
+proc writeTriangularSet(list F, string filename)
+{
+  int oldShort = short;
+  short = 0;
+  write(":a "+filename+".m", "F :=["+string(F)+"];");
+  short = oldShort;
+}
+
+proc finalizeMagmaFile(string filename, string all, int bound)
+{
+  int dummy = system("sh","sed -i 's/\_/\./g' "+filename+".m");
+  write(":a "+filename+".m", "T := TropicalVariety(F : WithMultiplicity:=false, All:="+all+", bound:="+string(bound)+");");
+  write(":a "+filename+".m", "PrintForSingular(\""+filename+".sing\", T);");
+  write(":a "+filename+".m", "exit;");
+}
+
+proc tropicalVarietyNewtonWithMagma(ideal I)
+{
   def origin = basering;
   int n = nvars(basering);
-  intvec weightVector = ringlist(origin)[3][1][2];
 
-  string newVars;
-  for (int i=1; i<k; i++)
+  string filename = "hunter"+string(random(1,1000000000));
+  string magmaVariables;
+  for (int i=1; i<n; i++)
   {
-    newVars = newVars+string(var(i))+",";
+    magmaVariables = magmaVariables + "M_"+string(i)+ ",";
   }
-  for (i=k+1; i<=n; i++)
-  {
-    newVars = newVars+string(var(i))+",";
-  }
-  newVars = newVars+string(var(k));
-  execute("ring ringForSaturation = ("+charstr(origin)+"),("+newVars+"),dp;");
+  magmaVariables = magmaVariables + "M_"+string(n);
+  execute("ring rTropCallMagma = (0,t),("+magmaVariables+"),lp;");
+  ideal I = fetch(origin,I);
+  list triangI = computeTriangularDecompositionIfNecessary(I);
 
-  ideal I = satstd(imap(origin,I));
-  if (I==-1)
+  if (size(triangI)>1)
   {
-    return (-1);
+    ERROR("bla");
   }
-  I = simplify(I,2+4+32);
+
+  initializeMagmaFile(filename,nvars(basering));
+  writeTriangularSet(triangI[1],filename);
+  finalizeMagmaFile(filename,"true",1);
+
+  dbprint("computing tropical varieties using magma...");
+  int dummy = system("sh","magma -b "+filename+".m");
+  execute("<\""+filename+".sing\";");
+
+  list TI;
+  for (int i=1; i<=nrows(TT); i++)
+  {
+    matrix p[1][n] = TT[i,1..n];
+    TI[i] = -p;
+    kill p;
+  }
 
   setring origin;
-  I = imap(ringForSaturation,I);
-  return (I);
+  return (fetch(rTropCallMagma,TI));
 }
 
-proc stepwiseSaturation(ideal I)
-{
-  if (I!=1)
-  {
-    list variablesToBeSaturated;
-    int l = nvars(basering);
-    for (int i=1; i<=l; i++)
-    { variablesToBeSaturated[i]=l-i+1; }
+// proc saturateWithRespectToVariable(ideal I, int k)
+// {
+//   ASSUME(1,k>=1);
+//   ASSUME(1,k<=nvars(basering));
 
-    while (size(variablesToBeSaturated)>0)
-    {
-      dbprint("variablesToBeSaturated: "+string(variablesToBeSaturated));
-      I = saturateWithRespectToVariable(I,variablesToBeSaturated[1]);
-      variablesToBeSaturated = delete(variablesToBeSaturated,1);
-      if ((I==1) || (I==-1))
-      {
-        break;
-      }
-    }
-  }
+//   def origin = basering;
+//   int n = nvars(basering);
+//   intvec weightVector = ringlist(origin)[3][1][2];
 
-  return (I);
-}
+//   string newVars;
+//   for (int i=1; i<k; i++)
+//   {
+//     newVars = newVars+string(var(i))+",";
+//   }
+//   for (i=k+1; i<=n; i++)
+//   {
+//     newVars = newVars+string(var(i))+",";
+//   }
+//   newVars = newVars+string(var(k));
+//   execute("ring ringForSaturation = ("+charstr(origin)+"),("+newVars+"),dp;");
+
+//   ideal I = satstd(imap(origin,I));
+//   if (I==-1)
+//   {
+//     return (-1);
+//   }
+//   I = simplify(I,2+4+32);
+
+//   setring origin;
+//   I = imap(ringForSaturation,I);
+//   return (I);
+// }
+
+// proc stepwiseSaturation(ideal I)
+// {
+//   if (I!=1)
+//   {
+//     list variablesToBeSaturated;
+//     int l = nvars(basering);
+//     for (int i=1; i<=l; i++)
+//     { variablesToBeSaturated[i]=l-i+1; }
+
+//     while (size(variablesToBeSaturated)>0)
+//     {
+//       dbprint("variablesToBeSaturated: "+string(variablesToBeSaturated));
+//       I = saturateWithRespectToVariable(I,variablesToBeSaturated[1]);
+//       variablesToBeSaturated = delete(variablesToBeSaturated,1);
+//       if ((I==1) || (I==-1))
+//       {
+//         break;
+//       }
+//     }
+//   }
+
+//   return (I);
+// }
 
 
-proc checkForContainmentInTropicalVariety(ideal I, intvec w, int charInt)
-{
-  def origin = basering;
-  intvec wOne = oneVector(nvars(origin));
-  execute("ring rInitialIdeal = ("+string(charInt)+"),("+varstr(origin)+"),(a(wOne),wp(w));");
+// proc checkForContainmentInTropicalVariety(ideal I, intvec w, int charInt)
+// {
+//   def origin = basering;
+//   intvec wOne = oneVector(nvars(origin));
+//   execute("ring rInitialIdeal = ("+string(charInt)+"),("+varstr(origin)+"),(a(wOne),wp(w));");
 
-  ideal I = imap(origin,I);
-  int tinI = timer;
-  option(redSB);
-  ideal stdI = satstd(I);
-  attrib(stdI,"isSB",1);
-  ideal inI = initial(stdI,w);
-  tinI = timer-tinI;
-  dbprint("time used computing initial ideal: "+string(tinI));
+//   ideal I = imap(origin,I);
+//   int tinI = timer;
+//   option(redSB);
+//   ideal stdI = satstd(I);
+//   attrib(stdI,"isSB",1);
+//   ideal inI = initial(stdI,w);
+//   tinI = timer-tinI;
+//   dbprint("time used computing initial ideal: "+string(tinI));
 
-  int tsat = timer;
-  ideal satinI = stepwiseSaturation(inI);
-  tsat = timer-tsat;
-  dbprint("time used computing saturation: "+string(tsat));
+//   int tsat = timer;
+//   ideal satinI = stepwiseSaturation(inI);
+//   tsat = timer-tsat;
+//   dbprint("time used computing saturation: "+string(tsat));
 
 
-  export(I);
-  export(stdI);
-  export(inI);
-  export(satinI);
-  return (rInitialIdeal);
-}
+//   export(I);
+//   export(stdI);
+//   export(inI);
+//   export(satinI);
+//   return (rInitialIdeal);
+// }

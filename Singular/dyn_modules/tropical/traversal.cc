@@ -87,13 +87,15 @@ std::set<tropical::groebnerCone> tropicalTraversal(const tropical::groebnerCone 
           id_Delete(&inIs,s);
 
           k = IDELEMS(inIsGB);
-          ideal IsGB = idInit(k);
+          ideal IsGBnonred = idInit(k);
           for (int l=0; l<k; l++)
           {
-            IsGB->m[l] = p_Add_q(inIsGB->m[l],p_Neg(inIsGBNF->m[l],s),s);
+            IsGBnonred->m[l] = p_Add_q(inIsGB->m[l],p_Neg(inIsGBNF->m[l],s),s);
             inIsGB->m[l] = NULL;
             inIsGBNF->m[l] = NULL;
           }
+          ideal IsGB = tropical_kStd_wrapper(IsGBnonred,s);
+          id_Delete(&IsGBnonred,s);
           id_Delete(&inIsGB,s);
           id_Delete(&inIsGBNF,s);
 

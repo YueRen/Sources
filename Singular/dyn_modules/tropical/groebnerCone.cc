@@ -2,6 +2,7 @@
 #include <gfanlib/gfanlib.h>
 #include <Singular/dyn_modules/gfanlib/callgfanlib_conversion.h>
 #include <Singular/dyn_modules/gfanlib/initial.h>
+#include <Singular/dyn_modules/gfanlib/bbcone.h>
 
 #include <groebnerCone.h>
 #include <symmetry.h>
@@ -143,5 +144,22 @@ namespace tropical {
       groebnerSubfan->insert(groebnerCone->getPolyhedralCone());
 
     return groebnerSubfan;
+  }
+
+
+  lists groebnerConesToListOfZCones(std::set<groebnerCone>& groebnerCones)
+  {
+    lists L = (lists)omAllocBin(slists_bin);
+    L->Init(groebnerCones.size());
+
+    int i=0;
+    for (std::set<groebnerCone>::iterator groebnerCone = groebnerCones.begin(); groebnerCone!=groebnerCones.end(); ++groebnerCone)
+    {
+      L->m[i].rtyp = coneID;
+      L->m[i].data = (void*) new gfan::ZCone(groebnerCone->getPolyhedralCone());
+      i++;
+    }
+
+    return L;
   }
 }

@@ -7,11 +7,18 @@
 #include <Singular/dyn_modules/gfanlib/initial.h>
 
 #include <set>
-#include <iostream>
-
 #include <groebnerCone.h>
 #include <singularWrappers.h>
 #include <symmetry.h>
+
+#define TRAVERSAL_TIMINGS_ON 0
+
+#include <iostream>
+
+#if TRAVERSAL_TIMINGS_ON
+#include <iostream>
+#include <ctime>
+#endif
 
 
 ring createNeighbouringRing(ring homeRing, gfan::ZVector interiorFacetPoint, gfan::ZVector outerFacetNormal)
@@ -64,6 +71,15 @@ std::set<tropical::groebnerCone> tropicalTraversal(const tropical::groebnerCone 
     ideal polynomialIdeal = maximalGroebnerCone.getPolynomialIdeal();
     ring polynomialRing = maximalGroebnerCone.getPolynomialRing();
 
+#if TRAVERSAL_TIMINGS_ON
+    std::clock_t tropicalLinkTime = 0;
+    std::clock_t initialStdTime = 0;
+    std::clock_t initialRedTime = 0;
+    std::clock_t entireIterationTime = 0;
+    std::clock_t titerationstart = std::clock();
+    std::clock_t ms = 0;
+#endif
+
     for (int i=0; i<interiorFacetPoints.getHeight(); i++)
     {
       gfan::ZVector interiorFacetPoint = interiorFacetPoints[i].toVector();
@@ -71,9 +87,24 @@ std::set<tropical::groebnerCone> tropicalTraversal(const tropical::groebnerCone 
       if (todo.second)
       {
         ideal initialIdeal = initial(polynomialIdeal,polynomialRing,interiorFacetPoint);
+
+#if TRAVERSAL_TIMINGS_ON
+        std::clock_t tlinkstart = std::clock();
+#endif
+
         gfan::ZMatrix tropicalLink = callTropicalLinkNewton(initialIdeal,polynomialRing);
+
+#if TRAVERSAL_TIMINGS_ON
+        std::clock_t tlinkend = std::clock();
+        ms = 1000.0 * (tlinkend - tlinkstart)/ CLOCKS_PER_SEC;
+        tropicalLinkTime += ms;
+#endif
+
         for (int j=0; j<tropicalLink.getHeight(); j++)
         {
+#if TRAVERSAL_TIMINGS_ON
+	  std::clock_t tloopstart = std::clock();
+#endif
           /* create a ring with weighted ordering  */
           ring s = createNeighbouringRing(polynomialRing,interiorFacetPoint,tropicalLink[j].toVector());
           nMapFunc identity1 = n_SetMap(polynomialRing->cf,s->cf);
@@ -82,7 +113,15 @@ std::set<tropical::groebnerCone> tropicalTraversal(const tropical::groebnerCone 
           ideal inIs = idInit(k);
           for (int l=0; l<k; l++)
             inIs->m[l] = p_PermPoly(initialIdeal->m[l],NULL,polynomialRing,s,identity1,NULL,0);
+#if TRAVERSAL_TIMINGS_ON
+          std::clock_t tstdstart = std::clock();
+#endif
           ideal inIsGB = tropical_kStd_wrapper(inIs,s);
+#if TRAVERSAL_TIMINGS_ON
+          std::clock_t tstdend = std::clock();
+          ms = 1000.0 * (tstdend - tstdstart)/ CLOCKS_PER_SEC;
+          initialStdTime += ms;
+#endif
           ideal inIsGBNF = tropical_kNF_wrapper(inIsGB,s,polynomialIdeal,polynomialRing);
           id_Delete(&inIs,s);
 
@@ -94,7 +133,15 @@ std::set<tropical::groebnerCone> tropicalTraversal(const tropical::groebnerCone 
             inIsGB->m[l] = NULL;
             inIsGBNF->m[l] = NULL;
           }
+#if TRAVERSAL_TIMINGS_ON
+          std::clock_t tredstart = std::clock();
+#endif
           ideal IsGB = tropical_kStd_wrapper(IsGBnonred,s);
+#if TRAVERSAL_TIMINGS_ON
+          std::clock_t tredend = std::clock();
+          ms = 1000.0 * (tredend - tredstart)/ CLOCKS_PER_SEC;
+          initialRedTime += ms;
+#endif
           id_Delete(&IsGBnonred,s);
           id_Delete(&inIsGB,s);
           id_Delete(&inIsGBNF,s);
@@ -103,19 +150,33 @@ std::set<tropical::groebnerCone> tropicalTraversal(const tropical::groebnerCone 
           outerFacetNormal.appendRow(tropicalLink[j].toVector());
           inIsGB = initial(IsGB,s,interiorFacetPoint,outerFacetNormal);
 
-
           tropical::groebnerCone neighbouringGroebnerCone(IsGB,inIsGB,s,symmetryGroup);
           id_Delete(&IsGB,s);
           id_Delete(&inIsGB,s);
 
           if (finishedList.count(neighbouringGroebnerCone)==0)
             workingList.insert(neighbouringGroebnerCone);
+#if TRAVERSAL_TIMINGS_ON
+	  std::clock_t tloopend = std::clock();
+          ms = 1000.0 * (tloopend - tloopstart)/ CLOCKS_PER_SEC;
+          std::cout << "One iteration: " << ms << " milliseconds." << std::endl;
+#endif
         }
       }
     }
+#if TRAVERSAL_TIMINGS_ON
+    std::clock_t titerationend = std::clock();
+    entireIterationTime = 1000.0 *(titerationend - titerationstart)/ CLOCKS_PER_SEC;
 
-    std::cout << "workingList.size(): " << workingList.size()
-              << "   finishedList.size(): " << finishedList.size() << std::endl;
+    std::cout << "tropicalLinkTime: " << tropicalLinkTime << " ms" << std::endl;
+    std::cout << "initialStdTime: " << initialStdTime << " ms" <<  std::endl;
+    std::cout << "initialRedTime: " << initialStdTime << " ms" <<  std::endl;
+    std::cout << "entireIterationTime: " << entireIterationTime << " ms" << std::endl;
+#endif
+
+    if (printlevel > 0)
+      Print("cones finished: %lu   cones in working list: %lu\n",
+      (unsigned long)finishedList.size(), (unsigned long)workingList.size());
   }
 
   return finishedList;

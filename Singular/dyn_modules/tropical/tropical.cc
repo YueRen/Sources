@@ -97,15 +97,183 @@ BOOLEAN tropicalStartingConeNewton(leftv res, leftv args)
 }
 
 
+BOOLEAN tropicalVarietyNew(leftv res, leftv args)
+{
+  leftv u = args;
+  if ((u != NULL) && (u->Typ() == IDEAL_CMD))
+  {
+    ideal I = (ideal) u->Data();
+    std::set<std::vector<int> > symmetryGroup1 = std::set<std::vector<int> >();
+
+    leftv v = u->next;
+    if ((v != NULL) && (v->Typ() == LIST_CMD))
+    {
+      lists symmetryGroup0 = (lists) v->Data();
+      symmetryGroup1 = convertPermutations(symmetryGroup0);
+    }
+
+    tropical::groebnerCone sigma = tropicalStartingCone(I,currRing,symmetryGroup1);
+    std::set<tropical::groebnerCone> TropI = tropicalTraversal(sigma,symmetryGroup1);
+
+    res->rtyp = LIST_CMD;
+    res->data = (void*) groebnerConesToListOfZCones(TropI);
+    return FALSE;
+  }
+  WerrorS("tropicalVarietyNew: unexpected parameters");
+  return TRUE;
+}
+
+
+std::vector<std::set<gfan::ZVector> > uniquePointsOfFacesByDimension(lists maximalCones)
+{
+  gfan::ZCone* maximalCone0 = (gfan::ZCone*) maximalCones->m[0].Data();
+  std::vector<std::set<gfan::ZVector> > uniquePointsGroupedByDimension(maximalCone0->ambientDimension());
+
+  for (int i=0; i<=lSize(maximalCones); i++)
+  {
+    gfan::ZCone* maximalCone = (gfan::ZCone*) maximalCones->m[i].Data();
+
+    gfan::ZFan maximalConeFan = gfan::ZFan(maximalCone->ambientDimension());
+    maximalConeFan.insert(*maximalCone);
+    gfan::ZMatrix maximalConeRays = rays(&maximalConeFan);
+    int ld = maximalConeFan.getLinealityDimension();
+
+    for (int d=0; d<=maximalConeFan.getDimension()-ld; d++)
+    {
+      for (int j=0; j<maximalConeFan.numberOfConesOfDimension(d,0,0); j++)
+      {
+        gfan::IntVector rayIndices = maximalConeFan.getConeIndices(d,j,0,0);
+
+        gfan::ZVector uniquePoint = gfan::ZVector(maximalCone->ambientDimension());
+        for (int l=0; l<rayIndices.size(); l++)
+        {
+          uniquePoint = uniquePoint + maximalConeRays[rayIndices[l]].toVector();
+        }
+        uniquePointsGroupedByDimension[d+ld].insert(uniquePoint);
+      }
+    }
+  }
+
+  return uniquePointsGroupedByDimension;
+}
+
+
+BOOLEAN fVectorModuloSymmetry(leftv res, leftv args)
+{
+  leftv u = args;
+  if ((u != NULL) && (u->Typ() == LIST_CMD))
+  {
+    leftv v = u->next;
+    if ((u != NULL) && (u->Typ() == LIST_CMD))
+    {
+      lists maximalCones = (lists) u->Data();
+      lists symmetryGroup0 = (lists) v->Data();
+      std::set<std::vector<int> > symmetryGroup = convertPermutations(symmetryGroup0);
+
+      gfan::ZCone* maximalCone = (gfan::ZCone*) maximalCones->m[0].Data();
+      int d = maximalCone->dimension();
+      int ld = maximalCone->dimensionOfLinealitySpace();
+
+      bigintmat* fVector = new bigintmat(1,d+1,coeffs_BIGINT);
+      number temp0 = n_Init(0,coeffs_BIGINT);
+      for (int i=0; i<ld; i++)
+        fVector->set(1,i+1,temp0);
+      n_Delete(&temp0,coeffs_BIGINT);
+      number temp1 = n_Init(1,coeffs_BIGINT);
+      fVector->set(1,ld+1,temp1);
+      n_Delete(&temp1,coeffs_BIGINT);
+
+      std::vector<std::set<gfan::ZVector> > uniquePointsGroupedByDimension = uniquePointsOfFacesByDimension(maximalCones);
+      for (int i=ld+1; i<=d; i++)
+      {
+        std::set<gfan::ZVector> uniquePoints = uniquePointsGroupedByDimension[i];
+        std::set<gfan::ZVector> uniquePointsModuloSymmetry;
+        for (std::set<gfan::ZVector>::iterator uniquePoint = uniquePoints.begin(); uniquePoint!=uniquePoints.end(); ++uniquePoint)
+        {
+          gfan::ZVector uniquePointMinimalRepresentative = minimalRepresentative(*uniquePoint,symmetryGroup);
+          if (uniquePointsModuloSymmetry.count(uniquePointMinimalRepresentative)==0)
+            uniquePointsModuloSymmetry.insert(uniquePointMinimalRepresentative);
+        }
+
+        number temp = integerToNumber(uniquePointsModuloSymmetry.size());
+        fVector->set(1,i+1,temp);
+        n_Delete(&temp,coeffs_BIGINT);
+      }
+
+      res->rtyp = BIGINTMAT_CMD;
+      res->data = (void*) fVector;
+      return FALSE;
+    }
+  }
+  WerrorS("fVectorModuloSymmetry: unexpected parameters");
+  return TRUE;
+}
+
+
+BOOLEAN fVectorIgnoringSymmetry(leftv res, leftv args)
+{
+  leftv u = args;
+  if ((u != NULL) && (u->Typ() == LIST_CMD))
+  {
+    leftv v = u->next;
+    if ((u != NULL) && (u->Typ() == LIST_CMD))
+    {
+      lists maximalCones = (lists) u->Data();
+      lists symmetryGroup0 = (lists) v->Data();
+      std::set<std::vector<int> > symmetryGroup = convertPermutations(symmetryGroup0);
+
+      gfan::ZCone* maximalCone = (gfan::ZCone*) maximalCones->m[0].Data();
+      int d = maximalCone->dimension();
+      int ld = maximalCone->dimensionOfLinealitySpace();
+
+      bigintmat* fVector = new bigintmat(1,d+1,coeffs_BIGINT);
+      number temp0 = n_Init(0,coeffs_BIGINT);
+      for (int i=0; i<ld; i++)
+        fVector->set(1,i+1,temp0);
+      n_Delete(&temp0,coeffs_BIGINT);
+      number temp1 = n_Init(1,coeffs_BIGINT);
+      fVector->set(1,ld+1,temp1);
+      n_Delete(&temp1,coeffs_BIGINT);
+
+      std::vector<std::set<gfan::ZVector> > uniquePointsGroupedByDimension = uniquePointsOfFacesByDimension(maximalCones);
+      for (int i=ld+1; i<=d; i++)
+      {
+        std::set<gfan::ZVector> uniquePoints = uniquePointsGroupedByDimension[i];
+        std::set<gfan::ZVector> uniquePointsIgnoringSymmetry;
+        for (std::set<gfan::ZVector>::iterator uniquePoint = uniquePoints.begin(); uniquePoint!=uniquePoints.end(); ++uniquePoint)
+        {
+          std::set<gfan::ZVector> uniquePointOrbit = orbit(*uniquePoint,symmetryGroup);
+          uniquePointsIgnoringSymmetry.insert(uniquePointOrbit.begin(),uniquePointOrbit.end());
+        }
+
+        number temp = integerToNumber(uniquePointsIgnoringSymmetry.size());
+        fVector->set(1,i+1,temp);
+        n_Delete(&temp,coeffs_BIGINT);
+      }
+
+      res->rtyp = BIGINTMAT_CMD;
+      res->data = (void*) fVector;
+      return FALSE;
+    }
+  }
+  WerrorS("fVectorIgnoringSymmetry: unexpected parameters");
+  return TRUE;
+}
+
+
 BOOLEAN tropicalDebug(leftv res, leftv args)
 {
   leftv u = args;
   ideal I = (ideal) u->Data();
+  leftv v = u->next;
+  lists symmetryGroup0 = (lists) v->Data();
+  std::set<std::vector<int> > symmetryGroup1 = convertPermutations(symmetryGroup0);
+
 
   std::cerr << "computing starting cone..." << std::endl;
   tropical::groebnerCone sigma = tropicalStartingCone(I,currRing,std::set<std::vector<int> >());
   std::cerr << "starting traversal..." << std::endl;
-  std::set<tropical::groebnerCone> TropI = tropicalTraversal(sigma);
+  std::set<tropical::groebnerCone> TropI = tropicalTraversal(sigma,symmetryGroup1);
 
   res->rtyp = fanID;
   res->data = (void*) groebnerConesToZFanStar(TropI);
@@ -118,6 +286,9 @@ extern "C" int SI_MOD_INIT(tropical)(SModulFunctions* p)
   p->iiAddCproc("","minimalRepresentative",FALSE,minimalRepresentative);
   p->iiAddCproc("","valuation",FALSE,valuation);
   p->iiAddCproc("","tropicalStartingConeNewton",FALSE,tropicalStartingConeNewton);
+  p->iiAddCproc("","tropicalVarietyNew",FALSE,tropicalVarietyNew);
+  p->iiAddCproc("","fVectorModuloSymmetry",FALSE,fVectorModuloSymmetry);
+  p->iiAddCproc("","fVectorIgnoringSymmetry",FALSE,fVectorIgnoringSymmetry);
   p->iiAddCproc("","tropicalDebug",FALSE,tropicalDebug);
   return MAX_TOK;
 }

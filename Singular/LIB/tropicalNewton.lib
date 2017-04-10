@@ -1202,7 +1202,7 @@ proc tropicalVarietyNewtonWithMagma(ideal I)
   execute("<\""+filename+".sing\";");
 
   list TI;
-  for (int i=1; i<=nrows(TT); i++)
+  for (i=1; i<=nrows(TT); i++)
   {
     matrix p[1][n] = TT[i,1..n];
     TI[i] = -p;
@@ -1211,6 +1211,49 @@ proc tropicalVarietyNewtonWithMagma(ideal I)
 
   setring origin;
   return (fetch(rTropCallMagma,TI));
+}
+
+/***
+ * Given a reduced Groebner basis and a weight on a facet of the tropical variety, does:
+ *   1) Computes the tropical link around the facet.
+ *   2) Computes the adjacent decorated Groebner cone in the tropical variety, i.e.
+ *       - constructs a ring equipped with the proper adjacent ordering
+ *       - does a Groebner flip to compute a reduced Groebner basis in that ordering
+ *       - constructs the adjacent Groebner cone
+ *       - computes the sum of all rays of the Groebner cone
+ * Returns a list of lists, one for each ray of the tropical link, containing:
+ *   - (ideal) a reduced Groebner basis with respect to an adjacent ordering
+ *   - (def) a ring equipped with the adjacent ordering
+ *   - (cone) an adjacent maximal tropical Groebner cone
+ *   - (bigintmat) the sum of all rays of the adjacent Groebner cone
+ **/
+proc tropicalTraversalPartialIterationStep(ideal I, intvec interiorFacetPoint, string uniquePrefix)
+{
+  def origin = basering;
+  list TIw;
+
+  // 1) Compute the tropical link around the facet
+  ideal inI = initial(I,interiorFacetPoint);
+  list tropicalLink = tropicalLinkNewton(inI);
+
+  // 2) For each tropical link
+  intvec wOnes;
+  for (int i=1; i<=nvars(basering); i++)
+  {
+    wOnes[i]=1;
+  }
+  for (i=1; i<=size(tropicalLink); i++)
+  {
+    matrix outerNormalVectorMatrix = tropicalLink[i];
+    intvec outerNormalVector = scaleAndCastToIntvec(outerNormalVectorMatrix); // todo
+
+    execute("ring "+uniquePrefix+"_ring("+string(i)+") = ("+charstr(origin)+"),("+varstr(origin)+"),(a(wOnes),a(interiorFacetPoint),a(outerNormalVector),lp);");
+    ideal inI = std(fetch(origin,inI));
+
+
+  }
+
+  return (TIw);
 }
 
 // proc saturateWithRespectToVariable(ideal I, int k)

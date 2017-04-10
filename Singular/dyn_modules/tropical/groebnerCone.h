@@ -35,6 +35,7 @@ public:
 };
 
 gfan::ZFan* groebnerConesToZFanStar(std::set<groebnerCone>& groebnerCones);
+lists groebnerConesToListOfZCones(std::set<groebnerCone>& groebnerCones);
 }
 
 #endif

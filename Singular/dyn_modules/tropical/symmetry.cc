@@ -65,3 +65,13 @@ gfan::ZVector minimalRepresentative(const gfan::ZVector &w, const std::set<std::
 
   return wmin;
 }
+
+std::set<gfan::ZVector> orbit(const gfan::ZVector &w, const std::set<std::vector<int> > &G)
+{
+  std::set<gfan::ZVector> Gw;
+
+  for (std::set<std::vector<int> >::iterator g=G.begin(); g!=G.end(); ++g)
+    Gw.insert(applyPermutation(w,*g));
+
+  return Gw;
+}

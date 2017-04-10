@@ -11,5 +11,6 @@ std::set<std::vector<int> > permutationGroup(const std::set<std::vector<int> > &
 
 gfan::ZVector applyPermutation(const gfan::ZVector &w, const std::vector<int> &g);
 gfan::ZVector minimalRepresentative(const gfan::ZVector &w, const std::set<std::vector<int> > &G);
+std::set<gfan::ZVector> orbit(const gfan::ZVector &w, const std::set<std::vector<int> > &G);
 
 #endif

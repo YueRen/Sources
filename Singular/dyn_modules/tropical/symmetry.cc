@@ -31,7 +31,6 @@ std::set<std::vector<int> > permutationGroup(const std::set<std::vector<int> > &
       for (std::set<std::vector<int> >::iterator jt = generators.begin(); jt!=generators.end(); ++jt)
         generatingSubgroup.insert(std::make_pair(composePermutations(it->first,*jt),true));
       it = generatingSubgroup.begin();
-      std::cout << "permutations found: " << generatingSubgroup.size() << std::endl;
     }
   }
   std::set<std::vector<int> > subgroup;

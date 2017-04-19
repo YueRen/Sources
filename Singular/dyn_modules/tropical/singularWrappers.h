@@ -9,5 +9,6 @@ gfan::ZMatrix callTropicalLinkNewton(ideal I, ring r);
 
 ideal tropical_kStd_wrapper(ideal I, ring r, tHomog h=testHomog);
 ideal tropical_kNF_wrapper(ideal dividend, ring dividendRing, ideal divisor, ring divisorRing);
+ideal tropical_kInterRed_wrapper(ideal I, ring r);
 
 #endif

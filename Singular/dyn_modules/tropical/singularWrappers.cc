@@ -149,3 +149,17 @@ ideal tropical_kNF_wrapper(ideal dividend, ring dividendRing, ideal divisor, rin
     rChangeCurrRing(origin);
   return residue;
 }
+
+
+ideal tropical_kInterRed_wrapper(ideal I, ring r)
+{
+  ring origin = currRing;
+  if (origin != r)
+    rChangeCurrRing(r);
+
+  ideal redI = kInterRed(I);
+
+  if (origin != r)
+    rChangeCurrRing(origin);
+  return redI;
+}

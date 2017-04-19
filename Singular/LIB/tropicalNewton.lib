@@ -1168,7 +1168,7 @@ proc finalizeMagmaFile(string filename, string all, int bound)
 {
   int dummy = system("sh","sed -i 's/\_/\./g' "+filename+".m");
   write(":a "+filename+".m", "T := TropicalVariety(F : WithMultiplicity:=false, All:="+all+", bound:="+string(bound)+");");
-  write(":a "+filename+".m", "PrintForSingular(\""+filename+".sing\", T);");
+  write(":a "+filename+".m", "_ := PrintForSingular(\""+filename+".sing\", T);");
   write(":a "+filename+".m", "exit;");
 }
 
@@ -1200,6 +1200,8 @@ proc tropicalVarietyNewtonWithMagma(ideal I)
   dbprint("computing tropical varieties using magma...");
   int dummy = system("sh","magma -b "+filename+".m");
   execute("<\""+filename+".sing\";");
+  dummy = system("sh","rm "+filename+".m");
+  dummy = system("sh","rm "+filename+".sing");
 
   list TI;
   for (i=1; i<=nrows(TT); i++)

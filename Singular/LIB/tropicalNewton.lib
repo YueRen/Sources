@@ -962,6 +962,7 @@ EXAMPLE: example tropicalLinkNewton; shows an example
     }
   }
   resVars = resVars[1..size(resVars)-1];
+  list T;
 
   ring srestr = create_ring("("+string(char(origin))+",t)", "("+resVars+")", "dp");
   number uniformizingParameter = t;
@@ -973,7 +974,6 @@ EXAMPLE: example tropicalLinkNewton; shows an example
   ideal substImagePos;
   ideal substImageNeg;
   int n = nvars(srestr);
-  list T;
   int j;
 
   for (i=1; i<=n; i++)
@@ -1028,7 +1028,7 @@ EXAMPLE: example tropicalLinkNewton; shows an example
     {
       list Tneg = tropicalVarietyNewton(inINeg);
     }
-    setring srestr;
+    setring origin;
     list Tpos = imap(ssubstLP,Tpos);
     list Tneg = imap(ssubstLP,Tneg);
     kill ssubstLP;
@@ -1039,8 +1039,10 @@ EXAMPLE: example tropicalLinkNewton; shows an example
     kill Tneg;
   }
   setring origin;
-  list TT = imap(srestr,T);
-  return(TT);
+  // list TT = imap(srestr,T);
+  // "tropicalLinkNewton returning:";
+  // T;
+  return(T);
 }
 example
 { "EXAMPLE:"; echo = 2;

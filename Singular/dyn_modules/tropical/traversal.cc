@@ -146,7 +146,7 @@ std::set<tropical::groebnerCone> tropicalTraversal(const tropical::groebnerCone 
           id_Delete(&inIsGB,s);
           id_Delete(&inIsGBNF,s);
 
-          gfan::ZMatrix outerFacetNormal(0,tropicalLink[j].getWidth());
+          gfan::ZMatrix outerFacetNormal(0,tropicalLink.getWidth());
           outerFacetNormal.appendRow(tropicalLink[j].toVector());
           inIsGB = initial(IsGB,s,interiorFacetPoint,outerFacetNormal);
 

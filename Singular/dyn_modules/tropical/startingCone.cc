@@ -56,6 +56,7 @@ tropical::groebnerCone tropicalStartingCone(const ideal I, const ring r, const s
 {
   bool done = false;
   tropical::groebnerCone startingCone;
+  int d = -1;
 
   do
   {
@@ -70,13 +71,17 @@ tropical::groebnerCone tropicalStartingCone(const ideal I, const ring r, const s
     for (int i=0; i<k; i++)
       Is->m[i] = p_PermPoly(I->m[i],NULL,r,polynomialRing,identity,NULL,0);
     ideal polynomialIdeal = tropical_kStd_wrapper(Is,polynomialRing);
+    if (d<0)
+    {
+      d = dim(polynomialIdeal,polynomialRing);
+    }
     id_Delete(&Is,polynomialRing);
 
     startingCone = tropical::groebnerCone(polynomialIdeal,polynomialRing,tropicalStartingPoint,symmetryGroup);
     id_Delete(&polynomialIdeal,polynomialRing);
     rDelete(polynomialRing);
   }
-  while (startingCone.getPolyhedralCone().dimension() < dim(I,r));
+  while (startingCone.getPolyhedralCone().dimension() < d);
 
   return startingCone;
 }

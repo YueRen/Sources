@@ -989,7 +989,9 @@ EXAMPLE: example tropicalLinkNewton; shows an example
     ideal substImagePos = imap(srestr,substImagePos);
     map substMapPos = srestr,substImagePos;
     ideal inIPos = substMapPos(inI);
-    if (dim(std(inIPos))<0)
+    ideal stdInIPos = satstd(inIPos);
+    attrib(stdInIPos,"isSB",1);
+    if (dim(stdInIPos)<0) // TODO: check also if zeroes outside torus
     {
       setring srestr;
       kill ssubstDP;

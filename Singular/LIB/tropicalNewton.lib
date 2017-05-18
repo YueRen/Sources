@@ -523,7 +523,6 @@ EXAMPLE: example tropicalPointNewton; shows an example
   }
   if (!isTriangularSet(J))
   {
-    "blabla!";
     J = triangL(J)[1];
   }
   tstdlp = timer - tstdlp;
@@ -995,11 +994,16 @@ EXAMPLE: example tropicalLinkNewton; shows an example
     {
       setring srestr;
       kill ssubstDP;
-      // dbprint(string(i)+": empty");
       i++;
       continue;
     }
-    // dbprint(string(i)+": non-empty, computing tropical variety");
+    if (containsMonomialRabinovich(stdInIPos))
+    {
+      setring srestr;
+      kill ssubstDP;
+      i++;
+      continue;
+    }
 
     setring srestr;
     kill ssubstDP;
@@ -1044,6 +1048,10 @@ EXAMPLE: example tropicalLinkNewton; shows an example
   // list TT = imap(srestr,T);
   // "tropicalLinkNewton returning:";
   // T;
+  if (size(T)==0)
+  {
+    "ERROR: zero-valent link!!!";
+  }
   return(T);
 }
 example
@@ -1149,6 +1157,24 @@ example
   list TinI = tropicalLinkNewton(inI);
   for (int i=1; i<=size(TinI); i++)
   { print(TinI[i]); }
+}
+
+
+proc containsMonomialRabinovich(ideal I)
+{
+  def origin = basering;
+  def Rext = extendring(1,"T(","dp");
+  def Rextord = changeord(list(list("dp",nvars(Rext))),Rext);
+  setring Rextord;
+  ideal Iext = imap(origin,I);
+  poly rabinovich = 1;
+  for (int i=1; i<=nvars(basering); i++)
+  {
+    rabinovich = rabinovich*var(i);
+  }
+  Iext = Iext+(rabinovich-1);
+  ideal stdIext = satstd(Iext);
+  return (stdIext==1);
 }
 
 

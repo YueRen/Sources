@@ -518,8 +518,8 @@ EXAMPLE: example tropicalPointNewton; shows an example
   if (dim(J)>0)
   {
     dbprint("not zero-dimensional, please restart algorithm");
-    bigintmat O[1][1];
-    return (O);
+    matrix w;
+    return (w);
   }
   if (!isTriangularSet(J))
   {
@@ -531,17 +531,27 @@ EXAMPLE: example tropicalPointNewton; shows an example
   setring origin;
   J = imap(s,J);
 
+  "degree of J:";
+  deg(J);
+
+  // if (deg(I)>1)
+  // {
+  //   "calling magma...";
+  //   list T = tropicalVarietyNewtonWithMagma(I,1000000);
+  //   return (T[1]);
+  // }
+
   int tnewton = timer;
   list Vlocal = newtonPolygonNegSlopes(J[1],1);
   int l = lexSmallestVariableIndex(J[1]);
   VV[l] = Vlocal[1];
-  dbprint("possible valuations for "+string(var(l))+" (picking first): "+string(Vlocal));
+  dbprint("possible values or valuations for "+string(var(l))+" (picking first): "+string(Vlocal));
 
   for (i=2; i<=size(J); i++)
   {
     Vlocal = expectedNewtonPolygonNegSlopes(J[i],VV,1);
     l = lexSmallestVariableIndex(J[i]);
-    dbprint("possible valuations for "+string(var(l))+" (picking first): "+string(Vlocal));
+    dbprint("possible values or valuations for "+string(var(l))+" (picking first): "+string(Vlocal));
     VV[l] = Vlocal[1];
   }
   tnewton = timer-tnewton;
@@ -1202,7 +1212,7 @@ proc finalizeMagmaFile(string filename, string all, int bound)
   write(":a "+filename+".m", "exit;");
 }
 
-proc tropicalVarietyNewtonWithMagma(ideal I)
+proc tropicalVarietyNewtonWithMagma(ideal I, list #)
 {
   def origin = basering;
   int n = nvars(basering);
@@ -1225,7 +1235,14 @@ proc tropicalVarietyNewtonWithMagma(ideal I)
 
   initializeMagmaFile(filename,nvars(basering));
   writeTriangularSet(triangI[1],filename);
-  finalizeMagmaFile(filename,"true",1);
+  if (size(#)==0)
+  {
+    finalizeMagmaFile(filename,"true",1);
+  }
+  else
+  {
+    finalizeMagmaFile(filename,"true",#[1]);
+  }
 
   dbprint("computing tropical varieties using magma...");
   int dummy = system("sh","magma -b "+filename+".m");

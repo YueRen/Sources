@@ -8,12 +8,13 @@
 #include <Singular/dyn_modules/gfanlib/bbfan.h>
 
 #include <conversion.h>
-#include <singularWrappers.h>
-#include <symmetry.h>
-#include <valuation.h>
 #include <groebnerCone.h>
+#include <homogeneity.h>
+#include <singularWrappers.h>
 #include <startingCone.h>
+#include <symmetry.h>
 #include <traversal.h>
+#include <valuation.h>
 
 
 BOOLEAN permutationGroup(leftv res, leftv args)
@@ -86,7 +87,9 @@ BOOLEAN tropicalStartingConeNewton(leftv res, leftv args)
   if ((u != NULL) && (u->Typ() == IDEAL_CMD))
   {
     ideal I = (ideal) u->Data();
-    tropical::groebnerCone sigma = tropicalStartingCone(I,currRing);
+    gfan::ZVector w = homogeneityVector(I,currRing);
+
+    tropical::groebnerCone sigma = tropicalStartingCone(I,currRing,w);
 
     res->rtyp = coneID;
     res->data = (void*) new gfan::ZCone(sigma.getPolyhedralCone());
@@ -112,8 +115,10 @@ BOOLEAN tropicalVarietyNew(leftv res, leftv args)
       symmetryGroup1 = convertPermutations(symmetryGroup0);
     }
 
-    tropical::groebnerCone sigma = tropicalStartingCone(I,currRing,symmetryGroup1);
-    std::set<tropical::groebnerCone> TropI = tropicalTraversal(sigma,symmetryGroup1);
+    gfan::ZVector w = homogeneityVector(I,currRing);
+
+    tropical::groebnerCone sigma = tropicalStartingCone(I,currRing,w,symmetryGroup1);
+    std::set<tropical::groebnerCone> TropI = tropicalTraversal(sigma,w,symmetryGroup1);
 
     res->rtyp = LIST_CMD;
     res->data = (void*) groebnerConesToListOfZCones(TropI);
@@ -263,20 +268,8 @@ BOOLEAN fVectorIgnoringSymmetry(leftv res, leftv args)
 
 BOOLEAN tropicalDebug(leftv res, leftv args)
 {
-  leftv u = args;
-  ideal I = (ideal) u->Data();
-  leftv v = u->next;
-  lists symmetryGroup0 = (lists) v->Data();
-  std::set<std::vector<int> > symmetryGroup1 = convertPermutations(symmetryGroup0);
-
-
-  std::cerr << "computing starting cone..." << std::endl;
-  tropical::groebnerCone sigma = tropicalStartingCone(I,currRing,std::set<std::vector<int> >());
-  std::cerr << "starting traversal..." << std::endl;
-  std::set<tropical::groebnerCone> TropI = tropicalTraversal(sigma,symmetryGroup1);
-
-  res->rtyp = fanID;
-  res->data = (void*) groebnerConesToZFanStar(TropI);
+  res->rtyp = NONE;
+  res->data = NULL;
   return FALSE;
 }
 

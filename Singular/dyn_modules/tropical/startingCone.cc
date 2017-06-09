@@ -9,7 +9,9 @@
 #include <singularWrappers.h>
 #include <symmetry.h>
 
-ring createRingWeightedOrdering(const ring r, gfan::ZVector w)
+// w = tropical starting point
+// v = positive homogeneity Vector
+ring createRingWeightedOrdering(const ring r, gfan::ZVector w, gfan::ZVector v)
 {
   bool ok;
 
@@ -24,7 +26,7 @@ ring createRingWeightedOrdering(const ring r, gfan::ZVector w)
   s->order[0] = ringorder_a;
   s->block0[0] = 1;
   s->block1[0] = n;
-  s->wvhdl[0] = ZVectorToIntStar(gfan::ZVector::allOnes(n),ok);
+  s->wvhdl[0] = ZVectorToIntStar(v,ok);
   s->order[1] = ringorder_a;
   s->block0[1] = 1;
   s->block1[1] = n;
@@ -52,7 +54,7 @@ int dim(ideal I, ring r)
 }
 
 
-tropical::groebnerCone tropicalStartingCone(const ideal I, const ring r, const std::set<std::vector<int> > &symmetryGroup)
+tropical::groebnerCone tropicalStartingCone(const ideal I, const ring r, const gfan::ZVector &w, const std::set<std::vector<int> > &symmetryGroup)
 {
   bool done = false;
   tropical::groebnerCone startingCone;
@@ -64,7 +66,7 @@ tropical::groebnerCone tropicalStartingCone(const ideal I, const ring r, const s
     // WARNING: homogeneous case only
     gfan::ZVector tropicalStartingPoint = QToZVectorPrimitive(tropicalStartingPoint0);
 
-    ring polynomialRing = createRingWeightedOrdering(r,tropicalStartingPoint);
+    ring polynomialRing = createRingWeightedOrdering(r,tropicalStartingPoint,w);
     nMapFunc identity = n_SetMap(r->cf,polynomialRing->cf);
     int k = IDELEMS(I);
     ideal Is = idInit(k);

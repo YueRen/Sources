@@ -21,7 +21,7 @@
 #endif
 
 
-ring createNeighbouringRing(ring homeRing, const gfan::ZVector &interiorFacetPoint, const gfan::ZVector &outerFacetNormal)
+ring createNeighbouringRing(ring homeRing, const gfan::ZVector &interiorFacetPoint, const gfan::ZVector &outerFacetNormal, const gfan::ZVector &w)
 {
   bool ok;
   ring neighbouringRing = rCopy0(homeRing,TRUE,FALSE);
@@ -33,7 +33,7 @@ ring createNeighbouringRing(ring homeRing, const gfan::ZVector &interiorFacetPoi
   neighbouringRing->order[0] = ringorder_a;
   neighbouringRing->block0[0] = 1;
   neighbouringRing->block1[0] = n;
-  neighbouringRing->wvhdl[0] = ZVectorToIntStar(gfan::ZVector::allOnes(n),ok);
+  neighbouringRing->wvhdl[0] = ZVectorToIntStar(w,ok);
   neighbouringRing->order[1] = ringorder_a;
   neighbouringRing->block0[1] = 1;
   neighbouringRing->block1[1] = n;
@@ -52,7 +52,8 @@ ring createNeighbouringRing(ring homeRing, const gfan::ZVector &interiorFacetPoi
 }
 
 
-std::set<tropical::groebnerCone> tropicalTraversal(const tropical::groebnerCone &startingCone, const std::set<std::vector<int> > &symmetryGroup)
+std::set<tropical::groebnerCone> tropicalTraversal(const tropical::groebnerCone &startingCone, const gfan::ZVector &w,
+                                                   const std::set<std::vector<int> > &symmetryGroup)
 {
   std::set<tropical::groebnerCone> workingList;
   workingList.insert(startingCone);
@@ -106,7 +107,7 @@ std::set<tropical::groebnerCone> tropicalTraversal(const tropical::groebnerCone 
           std::clock_t tloopstart = std::clock();
 #endif
           /* create a ring with weighted ordering  */
-          ring s = createNeighbouringRing(polynomialRing,interiorFacetPoint,tropicalLink[j].toVector());
+          ring s = createNeighbouringRing(polynomialRing,interiorFacetPoint,tropicalLink[j].toVector(),w);
           nMapFunc identity1 = n_SetMap(polynomialRing->cf,s->cf);
 
           int k = IDELEMS(initialIdeal);

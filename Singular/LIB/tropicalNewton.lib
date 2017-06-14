@@ -43,6 +43,12 @@ LIB "gfan.lib";
 LIB "triang.lib";
 LIB "linalg.lib";
 LIB "ring.lib";
+proc mod_init()
+{
+  option(noredefine);
+  option(redSB);
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 
 proc setUniformizingParameter(number p)
@@ -176,7 +182,7 @@ EXAMPLE: example newtonPolygonNegSlopes; shows an example
   {
     if (#[1]==1 && size(g)==2)
     {
-      if (deg(g[1])==1 && deg(g[2])==0)
+      if (totalDeg(g[1])==1 && totalDeg(g[2])==0)
       {
         poly root = -leadcoef(g[2])/leadcoef(g[1]);
         return (list(root));
@@ -193,7 +199,7 @@ EXAMPLE: example newtonPolygonNegSlopes; shows an example
   for (int i=1; i<=k; i++)
   {
     M[i,1] = 1;
-    M[i,2] = deg(g[i]);
+    M[i,2] = totalDeg(g[i]);
     M[i,3] = val(leadcoef(g[i]));
   }
   M[k+1,1] = 0;
@@ -299,6 +305,38 @@ static proc expectedValuation(poly h, list VV)
   return (vh);
 }
 
+
+static proc totalDeg(def g)
+{
+  int d;
+  if (typeof(g)=="poly")
+  {
+    int dd;
+    for (int i=1; i<=size(g); i++)
+    {
+      dd = sum(leadexp(g[i]));
+      if (d<dd)
+      {
+        d = dd;
+      }
+    }
+  }
+  if (typeof(g)=="ideal")
+  {
+    int dd;
+    for (int i=1; i<=size(g); i++)
+    {
+      dd = totalDeg(g[i]);
+      if (d<dd)
+      {
+        d = dd;
+      }
+    }
+  }
+  return (d);
+}
+
+
 static proc expectedNewtonPolygonNegSlopes(poly g, list VV, list #)
 {
   int k = size(VV);
@@ -314,7 +352,7 @@ static proc expectedNewtonPolygonNegSlopes(poly g, list VV, list #)
   {
     if (#[1]==1 && size(g)==2)
     {
-      if (deg(g[1])==1 && deg(g[2])==0)
+      if (totalDeg(g[1])==1 && totalDeg(g[2])==0)
       {
         poly root = -leadcoef(g[2])/leadcoef(g[1]);
         return (list(root));
@@ -332,7 +370,7 @@ static proc expectedNewtonPolygonNegSlopes(poly g, list VV, list #)
   {
     vh = expectedValuation(G[2,i],VV);
     M[i,1] = int(denominator(vh));
-    M[i,2] = deg(G[1,i]);
+    M[i,2] = totalDeg(G[1,i]);
     M[i,3] = int(numerator(vh));
   }
   M[k+1,1] = 0;
@@ -501,7 +539,7 @@ EXAMPLE: example tropicalPointNewton; shows an example
     {
       c = randomValuedNumber(#);
       VV[i]=number(val(c));
-      dbprint("substituting "+string(var(i))+" with number of valuation "+string(VV[i]));
+      "substituting "+string(var(i))+" with "+string(c);
       subststr = subststr+varstr(i)+","+string(c)+",";
     }
   }
@@ -530,9 +568,6 @@ EXAMPLE: example tropicalPointNewton; shows an example
   dbprint("starting analysis of Newton polygons");
   setring origin;
   J = imap(s,J);
-
-  "degree of J:";
-  deg(J);
 
   // if (deg(I)>1)
   // {
@@ -1024,7 +1059,7 @@ EXAMPLE: example tropicalLinkNewton; shows an example
     ideal inIPos = std(substMapPos(inI));
     number uniformizingParameter=t;
     export(uniformizingParameter);
-    if (deg(inIPos)>1)
+    if (totalDeg(inIPos)>1)
     {
       list Tpos = tropicalVarietyNewtonWithMagma(inIPos);
     }
@@ -1035,7 +1070,7 @@ EXAMPLE: example tropicalLinkNewton; shows an example
     ideal substImageNeg = imap(srestr,substImageNeg);
     map substMapNeg = srestr,substImageNeg;
     ideal inINeg = std(substMapNeg(inI));
-    if (deg(inINeg)>1)
+    if (totalDeg(inINeg)>1)
     {
       "calling magma...";
       list Tneg = tropicalVarietyNewtonWithMagma(inINeg);

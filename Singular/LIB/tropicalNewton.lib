@@ -940,6 +940,10 @@ static proc extendTropNewton(matrix Ti, int i, number toAdd, intvec toFill)
 
 proc mergeTropNewton(list T, list Ti, int i, number toAdd, intvec toFill)
 {
+  if (size(Ti) == 0)
+  {
+    return (T);
+  }
   int ii,j;
   matrix Tii;
   for (ii=1; ii<=size(Ti); ii++)
@@ -1061,6 +1065,7 @@ EXAMPLE: example tropicalLinkNewton; shows an example
     export(uniformizingParameter);
     if (totalDeg(inIPos)>1)
     {
+      "calling magma...";
       list Tpos = tropicalVarietyNewtonWithMagma(inIPos);
     }
     else

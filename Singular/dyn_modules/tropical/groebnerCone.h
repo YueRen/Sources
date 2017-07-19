@@ -32,6 +32,9 @@ public:
   gfan::ZVector getUniquePoint() const { return uniquePoint; };
 
   bool operator<(const groebnerCone& sigma) const;
+
+  void deletePolynomialIdealAndRing();
+  void deletePolyhedralCone();
 };
 
 gfan::ZFan* groebnerConesToZFanStar(std::set<groebnerCone>& groebnerCones);

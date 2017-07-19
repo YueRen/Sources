@@ -21,11 +21,15 @@ namespace tropical {
   }
 
   groebnerCone::groebnerCone(const groebnerCone &sigma):
-    polynomialRing(rCopy(sigma.getPolynomialRing())),
-    polynomialIdeal(id_Copy(sigma.getPolynomialIdeal(),sigma.getPolynomialRing())),
+    polynomialRing(NULL),
+    polynomialIdeal(NULL),
     polyhedralCone(gfan::ZCone(sigma.getPolyhedralCone())),
     uniquePoint(gfan::ZVector(sigma.getUniquePoint()))
   {
+    if (sigma.getPolynomialRing()!=NULL)
+      polynomialRing = rCopy(sigma.getPolynomialRing());
+    if (sigma.getPolynomialIdeal()!=NULL)
+      polynomialIdeal = id_Copy(sigma.getPolynomialIdeal(),sigma.getPolynomialRing());
   }
 
 
@@ -113,8 +117,13 @@ namespace tropical {
 
   groebnerCone::~groebnerCone()
   {
-    id_Delete(&polynomialIdeal,polynomialRing);
-    rDelete(polynomialRing);
+    if (polynomialIdeal!=NULL)
+      id_Delete(&polynomialIdeal,polynomialRing);
+    if (polynomialRing!=NULL)
+    {
+      rDelete(polynomialRing);
+      polynomialRing = NULL;
+    }
   }
 
 
@@ -132,6 +141,24 @@ namespace tropical {
   {
     return uniquePoint<sigma.getUniquePoint();
   }
+
+
+  void groebnerCone::deletePolynomialIdealAndRing()
+  {
+    if (polynomialIdeal!=NULL)
+      id_Delete(&polynomialIdeal,polynomialRing);
+    if (polynomialRing!=NULL)
+    {
+      rDelete(polynomialRing);
+      polynomialRing = NULL;
+    }
+  }
+
+  void groebnerCone::deletePolyhedralCone()
+  {
+    polyhedralCone = gfan::ZCone();
+  }
+
 
   gfan::ZFan* groebnerConesToZFanStar(std::set<groebnerCone>& groebnerCones)
   {

@@ -63,8 +63,6 @@ std::set<tropical::groebnerCone> tropicalTraversal(const tropical::groebnerCone 
   while (!workingList.empty())
   {
     tropical::groebnerCone maximalGroebnerCone = *(workingList.begin());
-    finishedList.insert(maximalGroebnerCone);
-    workingList.erase(maximalGroebnerCone);
 
     gfan::ZCone maximalPolyhedralCone = maximalGroebnerCone.getPolyhedralCone();
     gfan::ZMatrix interiorFacetPoints = interiorPointsOfFacets(maximalPolyhedralCone);
@@ -154,6 +152,7 @@ std::set<tropical::groebnerCone> tropicalTraversal(const tropical::groebnerCone 
           tropical::groebnerCone neighbouringGroebnerCone(IsGB,inIsGB,s,symmetryGroup); // todo: time this
           id_Delete(&IsGB,s);
           id_Delete(&inIsGB,s);
+          rDelete(s);
 
           if (finishedList.count(neighbouringGroebnerCone)==0) // todo: time this
             workingList.insert(neighbouringGroebnerCone);
@@ -163,8 +162,15 @@ std::set<tropical::groebnerCone> tropicalTraversal(const tropical::groebnerCone 
           std::cout << "one iteration: " << ms << " milliseconds." << std::endl;
 #endif
         }
+        id_Delete(&initialIdeal,polynomialRing);
       }
     }
+
+    maximalGroebnerCone.deletePolynomialIdealAndRing();
+    maximalGroebnerCone.deletePolyhedralCone();
+    finishedList.insert(maximalGroebnerCone);
+    workingList.erase(maximalGroebnerCone);
+
 #if TRAVERSAL_TIMINGS_ON
     std::clock_t titerationend = std::clock();
     entireIterationTime = 1000.0 *(titerationend - titerationstart)/ CLOCKS_PER_SEC;

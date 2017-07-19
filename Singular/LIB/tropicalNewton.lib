@@ -1084,15 +1084,18 @@ EXAMPLE: example tropicalLinkNewton; shows an example
     {
       list Tneg = tropicalVarietyNewton(inINeg);
     }
-    setring origin;
-    list Tpos = imap(ssubstLP,Tpos);
-    list Tneg = imap(ssubstLP,Tneg);
-    kill ssubstLP;
-    T = mergeTropNewton(T,Tpos,i,number(-1),p);
-    T = mergeTropNewton(T,Tneg,i,number(1),p);
-    // dbprint("total number of rays: "+string(size(T)));
-    kill Tpos;
-    kill Tneg;
+    if (size(Tneg)>0)
+    {
+      setring origin;
+      list Tpos = imap(ssubstLP,Tpos);
+      list Tneg = imap(ssubstLP,Tneg);
+      kill ssubstLP;
+      T = mergeTropNewton(T,Tpos,i,number(-1),p);
+      T = mergeTropNewton(T,Tneg,i,number(1),p);
+      // dbprint("total number of rays: "+string(size(T)));
+      kill Tpos;
+      kill Tneg;
+    }
   }
   setring origin;
   // list TT = imap(srestr,T);
@@ -1291,6 +1294,11 @@ proc tropicalVarietyNewtonWithMagma(ideal I, list #)
   dummy = system("sh","rm "+filename+".sing");
 
   list TI;
+  if (ncols(TT)<n)
+  {
+    return (TI);
+  }
+
   for (i=1; i<=nrows(TT); i++)
   {
     matrix p[1][n] = TT[i,1..n];

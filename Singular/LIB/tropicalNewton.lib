@@ -504,7 +504,7 @@ static proc addOneVectorUntilPositive(intvec w)
 proc tropicalPointNewton(ideal I, list #)
 "USAGE:   tropicalPointsLasVegas(I); I ideal
 RETURN:  matrix, a matrix containing a tropical point as row vector
-ASSUME:  uniformizingParameter is set and I monomial free
+ASSUME:  uniformizingParameter is set and the top-dimensional component of I is monomial free
 NOTE:    if printlevel sufficiently high will print intermediate data and timings
          returns error if randomly chosen hyperplanes are not generic
 EXAMPLE: example tropicalPointNewton; shows an example

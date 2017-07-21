@@ -1087,13 +1087,18 @@ EXAMPLE: example tropicalLinkNewton; shows an example
     if (size(Tneg)>0)
     {
       setring origin;
-      list Tpos = imap(ssubstLP,Tpos);
       list Tneg = imap(ssubstLP,Tneg);
-      T = mergeTropNewton(T,Tpos,i,number(-1),p);
       T = mergeTropNewton(T,Tneg,i,number(1),p);
-      // dbprint("total number of rays: "+string(size(T)));
-      kill Tpos;
       kill Tneg;
+      setring ssubstLP;
+    }
+    if (size(Tpos)>0)
+    {
+      setring origin;
+      list Tpos = imap(ssubstLP,Tpos);
+      T = mergeTropNewton(T,Tpos,i,number(-1),p);
+      kill Tpos;
+      setring ssubstLP;
     }
     kill ssubstLP;
   }

@@ -860,18 +860,9 @@ static proc pivotIndices(matrix H)
 }
 
 
-static proc varstrIntvec(intvec p)
-{
-  string s;
-  for (int i=1; i<=size(p); i++)
-  {
-    s = s+varstr(p[i])+",";
-  }
-  s = s[1..size(s)-1];
-  return (s);
-}
-
-
+/**
+ * Creates a new ring without the ith variable and prescribed ordering
+ */
 static proc substRing(int i, string orderstring)
 {
   int n = nvars(basering);

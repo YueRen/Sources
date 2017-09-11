@@ -87,3 +87,8 @@ tropical::groebnerCone tropicalStartingCone(const ideal I, const ring r, const g
 
   return startingCone;
 }
+
+tropical::groebnerCone groebnerWalkStartingCone(const ideal I, const ring r)
+{
+  return tropical::groebnerCone(I,r);
+}

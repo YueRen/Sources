@@ -32,6 +32,54 @@ namespace tropical {
       polynomialIdeal = id_Copy(sigma.getPolynomialIdeal(),sigma.getPolynomialRing());
   }
 
+	groebnerCone::groebnerCone(ideal I, ring r):
+		polynomialIdeal(id_Copy(I,r)),
+    polynomialRing(rCopy(r))
+ 	{
+		int n = rVar(polynomialRing);
+    gfan::ZMatrix inequalities = gfan::ZMatrix(0,n);
+    int* expv = (int*) omAlloc((n+1)*sizeof(int));
+		std::cout << "constructing inequalities of Groebner cone";
+    for (int i=0; i<IDELEMS(polynomialIdeal); i++)
+    {
+      poly g = polynomialIdeal->m[i];
+      if (g)
+      {
+        p_GetExpV(g,expv,polynomialRing);
+        gfan::ZVector leadexpv = intStar2ZVector(n,expv);
+
+				// 1. Compute the vertices of the Newton polytope
+				gfan::ZVector leadexpvLifted = leadexpv;
+				leadexpvLifted.push_back((long)1);
+				gfan::ZMatrix ExpvLifted(0,n+1);
+				ExpvLifted.appendRow(leadexpvLifted);
+        for (pIter(g); g; pIter(g))
+        {
+          p_GetExpV(g,expv,polynomialRing);
+          gfan::ZVector tailexpvLifted = intStar2ZVector(n,expv);
+					tailexpvLifted.push_back((long)1);
+					ExpvLifted.appendRow(tailexpvLifted);
+        }
+				gfan::ZCone newtonPolytope = gfan::ZCone(ExpvLifted,gfan::ZMatrix(0,n+1));
+				gfan::ZMatrix ExpvExtremal = newtonPolytope.getFacets();
+				ExpvExtremal = ExpvExtremal.submatrix(0,0,ExpvExtremal.getHeight(),n);
+
+				// 2. Read off the inequalities of the Groebner cone
+				for (int i=0; i<ExpvExtremal.getHeight(); i++)
+				{
+					gfan::ZVector tailexpv = ExpvExtremal[i].toVector();
+					inequalities.appendRow(leadexpv-tailexpv);		
+				}
+				std::cout << "." << std::flush;
+			}
+    }
+    omFreeSize(expv,(n+1)*sizeof(int));
+
+		std::cout << std::endl << "constructing facets of Groebner cone" << std::endl;
+    polyhedralCone = gfan::ZCone(inequalities,gfan::ZMatrix(0,inequalities.getWidth()));
+    polyhedralCone.canonicalize();
+    uniquePoint = polyhedralCone.getRelativeInteriorPoint();
+	}
 
   groebnerCone::groebnerCone(ideal I, ring r, gfan::ZVector interiorPoint, std::set<std::vector<int> > symmetryGroup):
     polynomialIdeal(id_Copy(I,r)),
@@ -67,7 +115,10 @@ namespace tropical {
 
     polyhedralCone = gfan::ZCone(inequalities,equations);
     polyhedralCone.canonicalize();
-    uniquePoint = minimalRepresentative(polyhedralCone.getUniquePoint(),symmetryGroup);
+		if (symmetryGroup.empty())
+			uniquePoint = polyhedralCone.getRelativeInteriorPoint();
+		else
+			uniquePoint = minimalRepresentative(polyhedralCone.getUniquePoint(),symmetryGroup);
   }
 
   groebnerCone::groebnerCone(ideal I, ideal inI, ring r, std::set<std::vector<int> > symmetryGroup):
@@ -158,6 +209,59 @@ namespace tropical {
   {
     polyhedralCone = gfan::ZCone();
   }
+
+	gfan::ZMatrix matrixMultiplication(const gfan::ZMatrix &M, const gfan::ZMatrix &N)
+	{
+		assert(M.getWidth()==N.getHeight());
+		gfan::ZMatrix MN(M.getHeight(),N.getWidth());
+		for (int i=0; i<M.getHeight(); i++)
+		{
+			for (int j=0; j<N.getWidth(); j++)
+			{
+				gfan::Integer MNij((long)0);
+				for (int k=0; k<M.getWidth(); k++)
+					MNij += M[i][k] * N[k][j];
+				MN[i][j] = MNij;
+			}
+		}
+		return MN;
+	}
+
+	std::pair<gfan::ZVector,gfan::ZVector> groebnerCone::facetPointingTo(const gfan::ZMatrix &P) const
+	{
+		gfan::ZMatrix outerFacetNormals = -(this->polyhedralCone.getFacets());
+
+		gfan::ZMatrix M = matrixMultiplication(outerFacetNormals,P.transposed());
+		gfan::ZVector maximalDotProduct(M.getWidth());
+		int maximalIndex = -1;
+		for (int i=0; i<outerFacetNormals.getHeight(); i++)
+		{
+			gfan::ZVector dotProduct = M[i].toVector();
+			if (maximalDotProduct<dotProduct)
+			{
+				maximalDotProduct = dotProduct;
+				maximalIndex = i;
+			}
+		}
+
+		if (maximalIndex<0)
+		{
+			return std::make_pair(gfan::ZVector(),gfan::ZVector());
+		}
+		
+		gfan::ZVector outerFacetNormal = outerFacetNormals[maximalIndex].toVector();
+		int n = polyhedralCone.ambientDimension();
+		gfan::ZMatrix facetEquation(0,n);
+		facetEquation.appendRow(outerFacetNormal);
+		gfan::ZMatrix identity(n,n);
+		for (int i=0; i<n; i++)
+			identity[i][i] = 1;
+		gfan::ZCone supportingPositiveHyperplane = gfan::ZCone(identity,facetEquation);
+		gfan::ZCone facet = gfan::intersection(polyhedralCone,supportingPositiveHyperplane);
+		gfan::ZVector interiorFacetPoint = facet.getRelativeInteriorPoint();
+		
+		return std::make_pair(interiorFacetPoint,outerFacetNormal);
+	}
 
 
   gfan::ZFan* groebnerConesToZFanStar(std::set<groebnerCone>& groebnerCones)

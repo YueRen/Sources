@@ -6,6 +6,7 @@
 #include <Singular/dyn_modules/gfanlib/callgfanlib_conversion.h>
 #include <Singular/dyn_modules/gfanlib/bbcone.h>
 #include <Singular/dyn_modules/gfanlib/bbfan.h>
+#include <Singular/dyn_modules/gfanlib/singularWishlist.h>
 
 #include <conversion.h>
 #include <groebnerCone.h>
@@ -266,6 +267,51 @@ BOOLEAN fVectorIgnoringSymmetry(leftv res, leftv args)
 }
 
 
+BOOLEAN groebnerWalkNew(leftv res, leftv args)
+{
+  leftv u = args;
+  if ((u != NULL) && (u->Typ() == IDEAL_CMD))
+  {
+    ideal I = (ideal) u->Data();
+
+    // leftv v = u->next;
+    // if ((v != NULL) && (v->Typ() == INTVEC_CMD))
+    // {
+		// 	intvec* p0 = (intvec*) v->Data();
+		// 	bigintmat* p1 = iv2bim(p0,coeffs_BIGINT);
+    //  gfan::ZVector* p = bigintmatToZVector(p1);
+		//	std::cout << "target: " << p->toString() << std::endl;
+
+		gfan::ZMatrix P(rVar(currRing),rVar(currRing));
+		for (int i=0; i<rVar(currRing); i++)
+			P[i][i] = 1;
+
+		std::cout << "constructing starting cone..." << std::endl;
+		tropical::groebnerCone sigmaStart = groebnerWalkStartingCone(I,currRing);
+		std::cout << "starting traversal..." << std::endl;
+		tropical::groebnerCone sigmaEnd = groebnerWalkTraversal(sigmaStart,P);
+
+		ring s = sigmaEnd.getPolynomialRing();
+		ideal Is = sigmaEnd.getPolynomialIdeal();
+		int k = IDELEMS(Is);
+		ideal Ir = idInit(k);
+		nMapFunc identity = n_SetMap(s->cf,currRing->cf);
+		for (int l=0; l<k; l++)
+			Ir->m[l] = p_PermPoly(Is->m[l],NULL,s,currRing,identity,NULL,0);
+
+		// id_Write(sigmaEnd.getPolynomialIdeal(),sigmaEnd.getPolynomialRing());		
+		// delete p1;
+		// delete p;
+		res->rtyp = IDEAL_CMD;
+		res->data = (char*) Ir;
+		return FALSE;
+		// }
+  }
+  WerrorS("groebnerWalkNew: unexpected parameters");
+  return TRUE;
+}
+
+
 BOOLEAN tropicalDebug(leftv res, leftv args)
 {
   res->rtyp = NONE;
@@ -283,5 +329,6 @@ extern "C" int SI_MOD_INIT(tropical)(SModulFunctions* p)
   p->iiAddCproc("","fVectorModuloSymmetry",FALSE,fVectorModuloSymmetry);
   p->iiAddCproc("","fVectorIgnoringSymmetry",FALSE,fVectorIgnoringSymmetry);
   p->iiAddCproc("","tropicalDebug",FALSE,tropicalDebug);
+  p->iiAddCproc("","groebnerWalkNew",FALSE,groebnerWalkNew);
   return MAX_TOK;
 }

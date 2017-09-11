@@ -23,8 +23,11 @@ public:
   ~groebnerCone();
   groebnerCone& operator=(const groebnerCone& sigma);
 
+	std::pair<gfan::ZVector,gfan::ZVector> facetPointingTo(const gfan::ZMatrix &P) const;
+
+	groebnerCone(ideal I, ring r);
   groebnerCone(ideal I, ring r, gfan::ZVector interiorPoint, std::set<std::vector<int> > symmetryGroup);
-  groebnerCone(ideal I, ideal inI, ring r, std::set<std::vector<int> > symmetryGroup);
+  groebnerCone(ideal I, ideal inI, ring r, std::set<std::vector<int> > symmetryGroup=std::set<std::vector<int> >());
 
   ideal getPolynomialIdeal() const { return polynomialIdeal; };
   ring getPolynomialRing() const { return polynomialRing; };

@@ -5,6 +5,7 @@
 #include <Singular/dyn_modules/gfanlib/callgfanlib_conversion.h>
 #include <Singular/dyn_modules/gfanlib/bbcone.h>
 #include <Singular/dyn_modules/gfanlib/initial.h>
+#include <Singular/dyn_modules/gfanlib/singularWishlist.h>
 
 #include <set>
 #include <groebnerCone.h>
@@ -16,7 +17,6 @@
 #include <iostream>
 
 #if TRAVERSAL_TIMINGS_ON
-#include <iostream>
 #include <ctime>
 #endif
 
@@ -167,7 +167,6 @@ std::set<tropical::groebnerCone> tropicalTraversal(const tropical::groebnerCone 
     }
 
     maximalGroebnerCone.deletePolynomialIdealAndRing();
-    maximalGroebnerCone.deletePolyhedralCone();
     finishedList.insert(maximalGroebnerCone);
     workingList.erase(maximalGroebnerCone);
 
@@ -187,4 +186,90 @@ std::set<tropical::groebnerCone> tropicalTraversal(const tropical::groebnerCone 
   }
 
   return finishedList;
+}
+
+ring createNeighbouringRing(ring homeRing, const gfan::ZVector &interiorFacetPoint, const gfan::ZVector &outerFacetNormal)
+{
+  bool ok;
+  ring neighbouringRing = rCopy0(homeRing,TRUE,FALSE);
+  int n = rVar(neighbouringRing);
+  neighbouringRing->order = (rRingOrder_t*) omAlloc0(5*sizeof(rRingOrder_t));
+  neighbouringRing->block0 = (int*) omAlloc0(5*sizeof(int));
+  neighbouringRing->block1 = (int*) omAlloc0(5*sizeof(int));
+  neighbouringRing->wvhdl = (int**) omAlloc0(5*sizeof(int**));
+  neighbouringRing->order[0] = ringorder_a;
+  neighbouringRing->block0[0] = 1;
+  neighbouringRing->block1[0] = n;
+  neighbouringRing->wvhdl[0] = ZVectorToIntStar(interiorFacetPoint,ok);
+  neighbouringRing->order[1] = ringorder_a;
+  neighbouringRing->block0[1] = 1;
+  neighbouringRing->block1[1] = n;
+  neighbouringRing->wvhdl[1] = ZVectorToIntStar(outerFacetNormal,ok);
+  neighbouringRing->order[2] = ringorder_lp;
+  neighbouringRing->block0[2] = 1;
+  neighbouringRing->block1[2] = n;
+  neighbouringRing->order[3] = ringorder_C;
+  rComplete(neighbouringRing);
+  rTest(neighbouringRing);
+  return neighbouringRing;
+}
+
+static tropical::groebnerCone computeMaximalFlip(const tropical::groebnerCone &currentGroebnerCone, const gfan::ZVector &interiorFacetPoint, const gfan::ZVector &outerFacetNormal)
+{
+	ring currentRing = currentGroebnerCone.getPolynomialRing();
+	ideal polynomialIdeal = currentGroebnerCone.getPolynomialIdeal();
+	ideal initialIdeal = initial(polynomialIdeal,currentRing,interiorFacetPoint);
+
+	ring s = createNeighbouringRing(currentRing,interiorFacetPoint,outerFacetNormal);
+	nMapFunc identity1 = n_SetMap(currentRing->cf,s->cf);
+	
+	int k = IDELEMS(initialIdeal);
+	ideal inIs = idInit(k);
+	for (int l=0; l<k; l++)
+		inIs->m[l] = p_PermPoly(initialIdeal->m[l],NULL,currentRing,s,identity1,NULL,0);
+	ideal inIsGB = tropical_kStd_wrapper(inIs,s);
+	ideal inIsGBNF = tropical_kNF_wrapper(inIsGB,s,polynomialIdeal,currentRing);
+	id_Delete(&inIs,s);
+	
+	k = IDELEMS(inIsGB);
+	ideal IsGBnonred = idInit(k);
+	for (int l=0; l<k; l++)
+	{
+		IsGBnonred->m[l] = p_Add_q(inIsGB->m[l],p_Neg(inIsGBNF->m[l],s),s);
+		inIsGB->m[l] = NULL;
+		inIsGBNF->m[l] = NULL;
+	}
+	ideal IsGB = tropical_kInterRed_wrapper(IsGBnonred,s);
+	id_Delete(&IsGBnonred,s);
+	id_Delete(&inIsGB,s);
+	id_Delete(&inIsGBNF,s);
+	
+	tropical::groebnerCone neighbouringGroebnerCone(IsGB,s);
+	return neighbouringGroebnerCone;
+}
+
+tropical::groebnerCone groebnerWalkTraversal(const tropical::groebnerCone &startingCone, const gfan::ZMatrix &P)
+{
+	tropical::groebnerCone currentCone = startingCone;
+	std::pair<gfan::ZVector,gfan::ZVector> nextFacet = currentCone.facetPointingTo(P);
+	gfan::ZVector interiorFacetPoint = nextFacet.first;
+	gfan::ZVector outerFacetNormal = nextFacet.second;
+
+	int i=0;
+	while (interiorFacetPoint.size()>0)
+	{
+		std::cout << "Step " << i++ <<": traversing facet point " << std::endl
+							<< interiorFacetPoint.toString() << std::endl
+							<< "in direction" << std::endl
+							<< outerFacetNormal.toString() << std::endl;
+		currentCone = computeMaximalFlip(currentCone,interiorFacetPoint,outerFacetNormal);
+		nextFacet = currentCone.facetPointingTo(P);
+		interiorFacetPoint = nextFacet.first;
+		outerFacetNormal = nextFacet.second;
+	}
+
+	// rDebugPrint(currentCone.getPolynomialRing());
+	// id_Write(currentCone.getPolynomialIdeal(),currentCone.getPolynomialRing());
+
+	return currentCone;
 }

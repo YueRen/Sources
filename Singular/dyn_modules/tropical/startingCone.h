@@ -8,5 +8,6 @@
 
 tropical::groebnerCone tropicalStartingCone(const ideal I, const ring r, const gfan::ZVector &w,
                                             const std::set<std::vector<int> > &symmetryGroup = std::set<std::vector<int> >());
+tropical::groebnerCone groebnerWalkStartingCone(const ideal I, const ring r);
 
 #endif

@@ -247,6 +247,10 @@ static proc listDot(list VV, intvec expv)
       }
       else
       {
+				"VV:";
+				VV;
+				"expv:";
+				expv;
         ERROR("listDot: unkown or invalid relevant entry");
       }
     }
@@ -515,7 +519,7 @@ EXAMPLE: example tropicalPointNewton; shows an example
     ERROR("tropicalPointNewton: uniformizingParameter not set");
   }
   int ttotal = timer;
-  ring origin = basering;
+  ring origin0 = basering;
 
   int tindepSet = timer;
   ideal stdI = std(I);
@@ -524,7 +528,7 @@ EXAMPLE: example tropicalPointNewton; shows an example
   tindepSet = timer - tindepSet;
   dbprint("maximal independent set: "+string(u));
 
-  int n = nvars(origin);
+  int n = nvars(origin0);
   string vars;
   string subststr = "ideal J = subst(I,";
   list VV;
@@ -561,20 +565,34 @@ EXAMPLE: example tropicalPointNewton; shows an example
   }
   if (!isTriangularSet(J))
   {
+		"dimension: "+string(dim(J));
     J = triangL(J)[1];
   }
   tstdlp = timer - tstdlp;
 
+  // if (deg(J)>1)
+  // {
+  //   "calling magma...";
+  //   list T = tropicalVarietyNewtonWithMagma(J,1000000,"false");
+	// 	setring origin;
+	// 	list T = imap(s,T);
+	// 	int j=1;
+	// 	for (int i=1; i<=size(VV); i++)
+	// 	{
+	// 		if (typeof(VV[i])=="none")
+	// 		{
+	// 			VV[i] =  T[1][j];
+	// 			j++;
+	// 		}
+	// 	}
+	// 	matrix w = -listOfNumbersToMatrix(VV);
+  //   return (w);
+  // }
+
   dbprint("starting analysis of Newton polygons");
   setring origin;
   J = imap(s,J);
-
-  // if (deg(I)>1)
-  // {
-  //   "calling magma...";
-  //   list T = tropicalVarietyNewtonWithMagma(I,1000000);
-  //   return (T[1]);
-  // }
+	J;
 
   int tnewton = timer;
   list Vlocal = newtonPolygonNegSlopes(J[1],1);
@@ -591,6 +609,9 @@ EXAMPLE: example tropicalPointNewton; shows an example
   }
   tnewton = timer-tnewton;
   matrix w = -listOfNumbersToMatrix(VV);
+
+	setring origin0;
+	matrix w = imap(origin,w);
 
   ttotal = timer-ttotal;
   dbprint("time used total: "+string(ttotal));
@@ -1245,7 +1266,7 @@ proc writeTriangularSet(list F, string filename)
 
 proc finalizeMagmaFile(string filename, string all, int bound)
 {
-  int dummy = system("sh","sed -i 's/\_/\./g' "+filename+".m");
+  int dummy = system("sh","sed -i '' 's/\_/\./g' "+filename+".m");
   write(":a "+filename+".m", "T := TropicalVariety(F : WithMultiplicity:=false, All:="+all+", bound:="+string(bound)+");");
   write(":a "+filename+".m", "_ := PrintForSingular(\""+filename+".sing\", T);");
   write(":a "+filename+".m", "exit;");
@@ -1278,10 +1299,18 @@ proc tropicalVarietyNewtonWithMagma(ideal I, list #)
   {
     finalizeMagmaFile(filename,"true",1);
   }
-  else
-  {
+	if (size(#)==1)
+	{
     finalizeMagmaFile(filename,"true",#[1]);
+	}
+	if (size(#)==2)
+  {
+    finalizeMagmaFile(filename,"false",#[1]);
   }
+	if (size(#)>2)
+	{
+		ERROR("blabla");
+	}
 
   dbprint("computing tropical varieties using magma...");
   int dummy = system("sh","magma -b "+filename+".m");

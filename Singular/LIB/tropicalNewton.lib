@@ -1264,12 +1264,80 @@ proc writeTriangularSet(list F, string filename)
   short = oldShort;
 }
 
+static proc isMacOSX()
+{
+  string s = system("uname");
+
+  for (int i = 1; i <= size(s)-2; i = i + 1)
+  {
+    if (s[i] == "d" or s[i] == "D")
+    {
+      if (s[i+1] == "a" or s[i+1] == "A")
+      {
+        if (s[i+2] == "r" or s[i+2] == "R")
+        {
+          return (1);
+        }
+      }
+    }
+  }
+  return (0);
+}
+
 proc finalizeMagmaFile(string filename, string all, int bound)
 {
-  int dummy = system("sh","sed -i '' 's/\_/\./g' "+filename+".m");
+  if (isMacOSX())
+  {
+    int dummy = system("sh","sed -i '' 's/\_/\./g' "+filename+".m");
+  }
+  else
+  {
+    int dummy = system("sh","sed -i 's/\_/\./g' "+filename+".m");
+  }
   write(":a "+filename+".m", "T := TropicalVariety(F : WithMultiplicity:=false, All:="+all+", bound:="+string(bound)+");");
   write(":a "+filename+".m", "_ := PrintForSingular(\""+filename+".sing\", T);");
   write(":a "+filename+".m", "exit;");
+}
+
+proc componentwiseMin(intvec v, intvec w)
+{
+  intvec vw;
+  for (int i=1; i<=size(v); i++)
+  {
+    vw[i] = min(v[i],w[i]);
+  }
+  return (vw);
+}
+
+proc divideByMaximalMonomial(poly f)
+{
+  intvec expv = leadexp(f);
+  for (int i=1; i<=size(f); i++)
+  {
+    expv = componentwiseMin(expv,leadexp(f[i]));
+  }
+  poly maximalMonomial = 1;
+  for (i=1; i<=size(expv); i++)
+  {
+    maximalMonomial = maximalMonomial*var(i)^expv[i];
+  }
+  return (f/maximalMonomial);
+}
+
+proc saturateTriangularSets(list triangI)
+{
+  ideal F;
+  int i,j;
+  for (i=1; i<=size(triangI); i++)
+  {
+    F = triangI[i];
+    for (j=1; j<=size(F); j++)
+    {
+      F[j] = divideByMaximalMonomial(F[j]);
+    }
+    triangI[i] = F;
+  }
+  return (F);
 }
 
 proc tropicalVarietyNewtonWithMagma(ideal I, list #)
@@ -1287,6 +1355,7 @@ proc tropicalVarietyNewtonWithMagma(ideal I, list #)
   execute("ring rTropCallMagma = (0,t),("+magmaVariables+"),lp;");
   ideal I = fetch(origin,I);
   list triangI = computeTriangularDecompositionIfNecessary(I);
+  triangI = saturateTriangularSets(triangI);
 
   if (size(triangI)>1)
   {

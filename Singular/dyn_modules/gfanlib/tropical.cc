@@ -393,6 +393,27 @@ BOOLEAN initial(leftv res, leftv args)
         bigintmat* w1 = (bigintmat*) v->Data();
         weightVector = bigintmatToZVector(*w1);
       }
+      leftv vv = v->next;
+      if ((vv != NULL) && ((v->Typ() == BIGINTMAT_CMD) || (vv->Typ() == INTVEC_CMD)))
+      {
+        gfan::ZMatrix* weightMatrix;
+        if (vv->Typ() == INTVEC_CMD)
+        {
+          bigintmat* wM = iv2bim((intvec*) vv->Data(), coeffs_BIGINT);
+          wM->inpTranspose();
+          weightMatrix = bigintmatToZMatrix(*wM);
+          delete wM;
+        }
+        else
+        {
+          weightMatrix = bigintmatToZMatrix(*(bigintmat*) vv->Data());
+        }
+        res->rtyp = POLY_CMD;
+        res->data = (void*) initial(p, currRing, *weightVector, *weightMatrix);
+        delete weightVector;
+        delete weightMatrix;
+        return FALSE;
+      }
       res->rtyp = POLY_CMD;
       res->data = (void*) initial(p, currRing, *weightVector);
       delete weightVector;
@@ -420,6 +441,27 @@ BOOLEAN initial(leftv res, leftv args)
         {
           bigintmat* w1 = (bigintmat*) v->Data();
           weightVector = bigintmatToZVector(*w1);
+        }
+        leftv vv = v->next;
+        if ((vv != NULL) && ((v->Typ() == BIGINTMAT_CMD) || (vv->Typ() == INTVEC_CMD)))
+        {
+          gfan::ZMatrix* weightMatrix;
+          if (vv->Typ() == INTVEC_CMD)
+          {
+            bigintmat* wM = iv2bim((intvec*) vv->Data(), coeffs_BIGINT);
+            wM->inpTranspose();
+            weightMatrix = bigintmatToZMatrix(*wM);
+            delete wM;
+          }
+          else
+          {
+            weightMatrix = bigintmatToZMatrix(*(bigintmat*) vv->Data());
+          }
+          res->rtyp = IDEAL_CMD;
+          res->data = (void*) initial(I, currRing, *weightVector, *weightMatrix);
+          delete weightVector;
+          delete weightMatrix;
+          return FALSE;
         }
         res->rtyp = IDEAL_CMD;
         res->data = (void*) initial(I, currRing, *weightVector);

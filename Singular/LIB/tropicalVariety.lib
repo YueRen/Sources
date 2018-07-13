@@ -1,0 +1,793 @@
+///////////////////////////////////////////////////////////////////////////////
+version="version tropicalNewton.lib 4.0.3.3 Nov_2017 "; // $Id$
+category="Tropical Geometry";
+info="
+LIBRARY:         tropicalNewton.lib  Computations in Tropical Geometry
+                                     using Newton Polygon methods
+
+AUTHORS:         Tommy Hofman,       email: thofmann@mathematik.uni.kl.de
+                 Yue Ren,            email: reny@cs.bgu.ac.il
+                 Dominik Bendle,     email: bendle@rhrk.uni-kl.de
+
+OVERVIEW:
+  This libraries contains algorithms for computing
+  - non-trivial points on tropical varieties,
+  - zero-dimensional tropical varieties,
+  - one-codimensional links of tropical varieties
+  based on Newton polygon methods.
+
+REFERENCES: Hofmann, Ren: Computing tropical points and tropical links, arXiv:1611.02878
+            (WARNING: this library follows the max convention instead
+                      and triangular sets follow the definition of the Singular book)
+
+SEE ALSO: tropicalVariety, tropical_lib
+
+KEYWORDS: tropical geometry; tropical varieties; Newton polygons
+
+PROCEDURES:
+  setUniformizingParameter()  sets the uniformizingParameter
+  val()                       returns valuation of element in ground field
+  newtonPolygonNegSlopes()    returns negative of the Newton Polyong slopes
+  cccMatrixToPositiveIntvec() helper function to turn a computed valuation vector
+                              into a usable weight vector in Singular
+  tropicalPointNewton()       computes point on tropical variety
+  switchRingsAndComputeInitialIdeal()
+                              switches rings and computes initial ideal
+  tropicalVarietyNewton()     computes tropical variety of zero-dimensional ideal
+  tropicalLinkNewton()        computes tropical variety that is polyhedral fan
+                                and has codimension one lineality space
+";
+
+///////////////////////////////////////////////////////////////////////////////
+
+proc mod_init()
+{
+  LIB "gfan.lib";
+  LIB "triang.lib";
+  LIB "linalg.lib";
+  LIB "tropicalNewton.lib";
+  LIB "tropicalPuiseux.lib";
+  option(redSB);
+  newstruct("decoratedGroebnerCone","cone polyhedralCone, bigintmat orbitIdentifier, ring polynomialRing, ideal polynomialIdeal, number uniformizingParameter");
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+// copied from groebnerCone.cc
+proc groebnerConeFromIdeals(ideal I, ideal inI)
+{
+  int N = nvars(basering);
+  int rInEq, rEq = 0, 0;
+  int i,j;
+  for (i = 1; i <= ncols(I); i++)
+  {
+    rInEq = rInEq + size(I[i]) - 1;
+  }
+  for (i = 1; i <= ncols(inI); i++)
+  {
+    rEq = rEq + size(inI[i]) - 1;
+  }
+  intmat inequalities[rInEq][N];
+  intmat equalities[rEq][N];
+  intvec leadexpv;
+  int row = 0;
+  for (i = 1; i <= ncols(I); i++)
+  {
+    leadexpv = leadexp(I[i]);
+    for (j = 2; j <= size(I[i]); j++)
+    {
+      row++;
+      inequalities[row,1..N] = leadexpv-leadexp(I[i][j]);
+    }
+  }
+  row = 0;
+  for (i = 1; i <= ncols(inI); i++)
+  {
+    leadexpv = leadexp(inI[i]);
+    for (j = 2; j <= size(inI[i]); j++)
+    {
+      row++;
+      equalities[row,1..N] = leadexpv-leadexp(inI[i][j]);
+    }
+  }
+  return(canonicalizeCone(coneViaInequalities(inequalities, equalities)));
+}
+
+// In: M,N two bigintmats
+// Out: 1, 0, -1 if M>N, M==N, M<N resp.
+static proc bigintmatComparison(bigintmat M, bigintmat N)
+{
+  int r = nrows(M);
+  int c = ncols(M);
+  if (c>ncols(N) || r>nrows(N))
+  {
+    return (1);
+  }
+  if (c<ncols(N) || r<nrows(N))
+  {
+    return (-1);
+  }
+
+  int i,j;
+  for (i=1; i<=r; i++)
+  {
+    for (j=1; j<=c; j++)
+    {
+      if (M[i,j] > N[i,j])
+      {
+        return (1);
+      }
+      if (M[i,j] < N[i,j])
+      {
+        return (-1);
+      }
+    }
+  }
+  return (0);
+}
+
+// In: list of bigintmats, optional second list
+// Out: list of bigintmats, sorted from small to large
+//        + optional second list changed the same
+static proc listOfBigintmatSort(list L, #)
+{
+  int twoInputLists = 0;
+  if (typeof(#)=="list")
+  {
+    twoInputLists = 1;
+  }
+
+  int b;
+  for (int i=1; i<size(L); i++)
+  {
+    // Compare i-th entry to the next
+    b = bigintmatComparison(L[i],L[i+1]);
+    if (b>0)
+    {
+      // if bigger: swap and reset i
+      def cache = L[i+1];
+      L[i+1] = L[i];
+      L[i] = cache;
+      kill cache;
+
+      if (twoInputLists)
+      {
+        def cache = #[i+1];
+        #[i+1] = #[i];
+        #[i] = cache;
+        kill cache;
+      }
+
+      i=0;
+    }
+    if (b==0)
+    {
+      // if equal: delete and decrement i
+      L = delete(L,i);
+
+      if (twoInputLists)
+      {
+        # = delete(#,i);
+      }
+
+      i--;
+    }
+  }
+
+  if (twoInputLists)
+  {
+    return (L,#);
+  }
+  return (L);
+}
+
+// In: L,K two sorted lists of bigintmats
+// Out: list, containing the positions after which the entries of K are to be inserted in L
+//        or -1 if an entry of K already exists in L
+static proc findInsertionPoints(alias list L, list K, #)
+{
+  int threeInputLists = 0;
+  if (typeof(#)=="list")
+  {
+    threeInputLists = 1;
+  }
+
+  list insertionIndices;
+  int b;
+  for (int i,j=1,1; i<=size(L) && j<=size(K); i++)
+  {
+    // Compare i-th entry of L to j-th entry of K
+    b = bigintmatComparison(L[i],K[j]);
+    if (b>0)
+    {
+      // if bigger, set place to insert j-th entry of K to i-1
+      // increment j and decrement i
+      insertionIndices[j] = i-1;
+      j++;
+      i--;
+    }
+    if (b==0)
+    {
+      // if equal, delete j-th entry of K
+      // decrement i
+      K = delete(K,j);
+      i--;
+
+      if (threeInputLists)
+      {
+        # = delete(#,j);
+      }
+    }
+  }
+  // Fill up remaining insertion points
+  for (; j<=size(K); j++)
+  {
+    insertionIndices[j] = size(L);
+  }
+
+  if (threeInputLists)
+  {
+    return (insertionIndices,K,#);
+  }
+  return (insertionIndices,K)
+}
+
+
+static proc bigintmatToListOfBigintmats(alias bigintmat uniquePointsOfFacets)
+{
+  list L;
+  int k = nrows(uniquePointsOfFacets);
+  int n = ncols(uniquePointsOfFacets);
+  bigintmat uniquePointOfFacet[1][n];
+  for (int i=1; i<=k; i++)
+  {
+    uniquePointOfFacet[1,1..n] = uniquePointsOfFacets[i,1..n];
+    L[i] = uniquePointOfFacet;
+  }
+  return (L);
+}
+
+
+static proc bigintmatToIntvec(bigintmat uniquePointBigintmat)
+{
+  return (intvec(int(uniquePointBigintmat[1,1..ncols(uniquePointBigintmat)])));
+}
+
+
+/***
+ * Given a reduced Groebner basis and a weight on a facet of the tropical variety, does:
+ *   1) Computes the tropical link around the facet.
+ *   2) Computes the adjacent decorated Groebner cone in the tropical variety, i.e.
+ *       - constructs a ring equipped with the proper adjacent ordering
+ *       - does a Groebner flip to compute a reduced Groebner basis in that ordering
+ *       - constructs the adjacent Groebner cone
+ *       - computes the sum of all rays of the Groebner cone
+ * Returns a list of lists, one for each ray of the tropical link, containing:
+ *   - (def) a ring equipped with the adjacent ordering containing an ideal stdI
+ *   - (cone) an adjacent maximal tropical Groebner cone
+ *   - (bigintmat) the signature of the adjacent Groebner cone
+ **/
+proc tropicalTraversalPartialIterationStep(ideal I, bigintmat interiorFacetPoint, alias list symmetryGroup)
+{
+  def origin = basering;
+  list TIw;
+  int i, j, k;
+  ideal inIsGB, inIsGBNF;
+
+  // 1) Compute the tropical link around the facet
+  ideal inI = initial(I,interiorFacetPoint);
+  list tropicalLink = tropicalLinkNewton(inI);
+
+  // 2) For each tropical link
+  intvec wOnes;
+  for (i=1; i<=nvars(basering); i++)
+  {
+    wOnes[i]=1;
+  }
+  matrix outerNormalVectorMatrix;
+  intvec outerNormalVector;
+  for (i=1; i<=size(tropicalLink); i++)
+  {
+    outerNormalVectorMatrix = tropicalLink[i];
+    outerNormalVector = scaleAndCastToIntvec(outerNormalVectorMatrix);
+
+    execute("ring adjRing("+string(i)+") = ("+charstr(origin)+"),("+varstr(origin)+"),(a(wOnes),a(bigintmatToIntvec(interiorFacetPoint)),a(outerNormalVector),lp);");
+    ideal inIsGB = std(fetch(origin,inI));
+
+    setring origin;
+    inIsGB = fetch(adjRing(i), inIsGB);
+    inIsGBNF = NF(inIsGB, I);
+
+    setring adjRing(i);
+    ideal inIsGBNF = fetch(origin,inIsGBNF);
+    ideal IsGBnonred;
+    k = ncols(inIsGB);
+    for (j = 1; j <= k; j++)
+    {
+      IsGBnonred[j] = inIsGB[j] - inIsGBNF[j];
+    }
+
+    ideal stdI = interred(IsGBnonred);
+    attrib(stdI, "isSB", 1);
+    ideal inI = initial(stdI,interiorFacetPoint,outerNormalVector);
+    number uniformizingParameter = fetch(origin,uniformizingParameter);
+
+    decoratedGroebnerCone neighbourCone;
+    neighbourCone.polyhedralCone = groebnerConeFromIdeals(stdI, inI);
+    neighbourCone.orbitIdentifier = minimalRepresentative(uniquePoint(neighbourCone.polyhedralCone),symmetryGroup);
+    neighbourCone.polynomialRing = adjRing(i);
+    neighbourCone.polynomialIdeal = stdI;
+    neighbourCone.uniformizingParameter = uniformizingParameter;
+    TIw[i] = neighbourCone;
+    kill neighbourCone;
+    setring origin;
+  }
+
+  return (TIw);
+}
+
+proc tropicalTraversalStep(decoratedGroebnerCone coneInWorkingList, list knownCones, list knownLinks, list symmetryGroup)
+{
+  // 0. Parse data in workinListItem
+  cone C = coneInWorkingList.polyhedralCone;
+  def originTropicalTraversalStep = coneInWorkingList.polynomialRing;
+  setring originTropicalTraversalStep;
+  ideal stdI = coneInWorkingList.polynomialIdeal;
+  number uniformizingParameter = coneInWorkingList.uniformizingParameter;
+  export(uniformizingParameter);
+
+  // 1.a. Compute a unique points in each facet and their signatures
+  list uniqueFacetPoints = bigintmatToListOfBigintmats(uniquePointsOfFacets(C));
+  list newLinks;
+  for (int i=1; i<=size(uniqueFacetPoints); i++)
+  {
+    newLinks[i] = minimalRepresentative(uniqueFacetPoints[i],symmetryGroup);
+  }
+
+  // 1.b. Sort newLinks and the unique points according to it.
+  newLinks,uniqueFacetPoints = listOfBigintmatSort(newLinks,uniqueFacetPoints);
+
+  // 1.c. Find the insertion points of the signatures
+  //        and delete those which are redundant, as well as their unique points
+  list newLinksInsertionPoints;
+  newLinksInsertionPoints,newLinks,uniqueFacetPoints = findInsertionPoints(knownLinks,newLinks,uniqueFacetPoints);
+
+  // 2. Compute tropical neighbours for each remaining facet
+  list neighbouringCones;
+  for (i=1; i<=size(uniqueFacetPoints); i++)
+  {
+    neighbouringCones = neighbouringCones + tropicalTraversalPartialIterationStep(stdI,uniqueFacetPoints[i],symmetryGroup);
+  }
+
+  // 3.a Read out newCones, sort them and neighouringCones accordingly.
+  list newCones;
+  for (i=1; i<=size(neighbouringCones); i++)
+  {
+    newCones[i] = neighbouringCones[i].orbitIdentifier;
+  }
+  newCones,neighbouringCones = listOfBigintmatSort(newCones,neighbouringCones);
+
+  // 3.b. Find the insertion points of newcones and delete those which are redundant,
+  //        as well as their corresponding neighbouringCones
+  list newConesInsertionPoints;
+  newConesInsertionPoints,newCones,neighbouringCones = findInsertionPoints(knownCones,newCones,neighbouringCones);
+
+  return(list(neighbouringCones,newCones,newConesInsertionPoints,newLinks,newLinksInsertionPoints));
+}
+
+// compute a starting cone
+proc tropicalStartingCone(ideal I, list #)
+{
+  list symmetryGroup;
+  if (size(#) > 0)
+  {
+    symmetryGroup = #;
+  }
+
+  int d = -1;
+  def origin = basering;
+  matrix startingPointMat;
+  cone startingPolyhedralCone;
+  intvec startingPoint;
+  // since tropicalPointNewton is probabilistic, compute cone until it has
+  // same dimension as ideal
+  while(1)
+  {
+    startingPointMat = tropicalPointNewton(I);
+    startingPoint = cccMatrixToPositiveIntvec(startingPointMat);
+    def startingRing = switchRingsAndComputeInitialIdeal(I, startingPoint);
+    setring startingRing;
+    number uniformizingParameter = fetch(origin,uniformizingParameter);
+    export(uniformizingParameter);
+    if (d < 0)
+    {
+      d = dim(stdI);
+    }
+    startingPolyhedralCone = groebnerConeFromIdeals(stdI, inI);
+    if (dimension(startingPolyhedralCone) == d)
+    {
+      decoratedGroebnerCone startingCone;
+      startingCone.polyhedralCone = startingPolyhedralCone;
+      startingCone.orbitIdentifier = minimalRepresentative(uniquePoint(startingPolyhedralCone),symmetryGroup);
+      startingCone.polynomialRing = startingRing;
+      startingCone.polynomialIdeal = stdI;
+      startingCone.uniformizingParameter = uniformizingParameter;
+      return (startingCone);
+    }
+    setring origin;
+    kill startingRing;
+  }
+}
+
+static proc fakeParallelWaitAll(string command, list args)
+{
+  list out;
+  for (int i=1; i<=size(args); i++)
+  {
+    execute("out[i] = "+command+"(args[i][1],args[i][2],args[i][3],args[i][4]);");
+  }
+  return (out);
+}
+
+static proc isIthInsertionPointMinimal(alias list newConesInsertionPoints, int i, int minimalInsertionPoint)
+{
+  if (size(newConesInsertionPoints[i])>0)
+  {
+    if (newConesInsertionPoints[i][1]==minimalInsertionPoint)
+    {
+      return (1);
+    }
+  }
+  return (0);
+}
+
+proc tropicalVarietyFull(ideal I, list #)
+{
+  // 0. Save original ring and read in symmetry group
+  def origin = basering;
+  list symmetryGroup;
+  if (size(#) > 0)
+  {
+    symmetryGroup = #;
+  }
+
+  // 1. Compute a starting cone and initialize traversal data:
+  //    - finishedList: a list of list, each element consists of
+  //        [1]: (ring) contains GB of the original and the initial ideal
+  //        [2]: (cone) maximal Groebner cone in the tropical variety
+  //        [3]: (bigintmat) the signature of the Groebner cone
+  //    - workingList: a list of list, each element consists of
+  //        [1]: (ring) contains GB of the original and the initial ideal
+  //        [2]: (cone) maximal Groebner cone in the tropical variety
+  //        [3]: (bigintmat) the signature of the Groebner cone
+  //    - knownCones: a list of signatures of maximal Groebner cones
+  //        in the tropical variety
+  //        this exists to efficiently check whether a newly computed cone is already known
+  //    - knownLinks: a list of signatures of codimension-one Groebner cones
+  //        in the tropical variety whose adjacent maximal cones are guaranteed to be known
+  //        this exists to avoid costly redundant computations
+  decoratedGroebnerCone startingCone = tropicalStartingCone(I,symmetryGroup);
+  list finishedList;
+  list workingList = startingCone;
+  list knownCones = startingCone.orbitIdentifier;
+  list knownLinks;
+
+  string command = "tropicalTraversalStep";
+  list args;
+  list out;
+  int maximalLoad = getcores();
+  int currentLoad;
+
+  int i,j,b;
+  list newNeighbours;
+  list newCones;
+  list newConesInsertionPoints;
+  list newLinks;
+  list newLinksInsertionPoints;
+
+  list minimalNewNeighbours;
+  list minimalNewCones;
+  list minimalNewLinks;
+  int minimalNewConeInsertionPoint;
+  int minimalNewLinkInsertionPoint;
+  int newConesRemaining;
+  int newLinksRemaining;
+
+  while (size(workingList)>0)
+  {
+    // 2.a. Prepare up to maximalLaod inputs for tropicalTraversalStep,
+    //        add them to the finished list and delete them from the working list
+    currentLoad = min(maximalLoad,size(workingList));
+    args = list();
+    for (i=1; i<=currentLoad; i++)
+    {
+      args[i] = list(workingList[1],knownCones,knownLinks,symmetryGroup);
+      finishedList[size(finishedList)+1] = workingList[1];
+      workingList = delete(workingList,1);
+    }
+
+    // 2.b. Run currentLoad parallel tropicalTraversalStep
+    out = fakeParallelWaitAll(command,args);
+
+    // 2.c. Parse currentLoad outputs of tropicalTraversalStep,
+    //        and count the total number of newCones and newLinks
+    newNeighbours = list();
+    newCones = list();
+    newConesInsertionPoints = list();
+    newLinks = list();
+    newLinksInsertionPoints = list();
+    newConesRemaining = 0;
+    newLinksRemaining = 0;
+    for (i=1; i<=currentLoad; i++)
+    {
+      newNeighbours[i] = out[i][1];
+      newCones[i] = out[i][2];
+      newConesInsertionPoints[i] = out[i][3];
+      newLinks[i] = out[i][4];
+      newLinksInsertionPoints[i] = out[i][5];
+      newConesRemaining = newConesRemaining + size(newCones[i]);
+      newLinksRemaining = newLinksRemaining + size(newLinks[i]);
+    }
+
+    // 3. Bookkeeping: merging all newCones
+    while (newConesRemaining>0)
+    {
+      // 3.a. Find minimal insertion point amongst the remaining cones
+      minimalNewNeighbours = list();
+      minimalNewCones = list();
+      minimalNewConeInsertionPoint = size(knownCones)+1;
+      for (i=1; i<=currentLoad; i++)
+      {
+        if (size(newConesInsertionPoints[i])>0)
+        {
+          minimalNewConeInsertionPoint = min(minimalNewConeInsertionPoint,newConesInsertionPoints[i][1]);
+        }
+      }
+      // 3.b. Gather all minimal cones to be inserted in that position
+      for (i=1; i<=currentLoad; i++)
+      {
+        while(isIthInsertionPointMinimal(newConesInsertionPoints,i,minimalNewConeInsertionPoint))
+        {
+          minimalNewNeighbours[size(minimalNewNeighbours)+1] = newNeighbours[i][1];
+          minimalNewCones[size(minimalNewCones)+1] = newCones[i][1];
+          newNeighbours[i] = delete(newNeighbours[i],1);
+          newCones[i] = delete(newCones[i],1);
+          newConesInsertionPoints[i] = delete(newConesInsertionPoints[i],1);
+          newConesRemaining--;
+        }
+      }
+      // 3.c. Sort the gathered cones, neighboring cones accordingly.
+      minimalNewCones,minimalNewNeighbours = listOfBigintmatSort(minimalNewCones,minimalNewNeighbours);
+
+      // 3.d. Insert sorted cones into knownCones and workingList
+      for (i=1; i<=size(minimalNewCones); i++)
+      {
+        workingList[size(workingList)+1] = minimalNewNeighbours[i];
+        knownCones = insert(knownCones,minimalNewCones[i],minimalNewConeInsertionPoint);
+        minimalNewConeInsertionPoint++;
+      }
+      // 3.e. Increment remaining insertion points by the amount of cones inserted
+      for (i=1; i<=currentLoad; i++)
+      {
+        for (j=1; j<=size(newConesInsertionPoints[i]); j++)
+        {
+          newConesInsertionPoints[i][j] = newConesInsertionPoints[i][j] + size(minimalNewCones);
+        }
+      }
+    }
+
+    // 4. Bookkeeping B: merging all newLinks
+    while (newLinksRemaining>0)
+    {
+      // 4.a. Find minimal insertion point amongst the remaining links
+      minimalNewLinks = list();
+      minimalNewLinkInsertionPoint = size(knownLinks)+1;
+      for (i=1; i<=currentLoad; i++)
+      {
+        if (size(newLinksInsertionPoints[i])>0)
+        {
+          minimalNewLinkInsertionPoint = min(minimalNewLinkInsertionPoint,newLinksInsertionPoints[i][1]);
+        }
+      }
+      // 4.b. Gather all minimal links to be inserted in that position
+      for (i=1; i<=currentLoad; i++)
+      {
+        while(isIthInsertionPointMinimal(newLinksInsertionPoints,i,minimalNewLinkInsertionPoint))
+        {
+          minimalNewLinks[size(minimalNewLinks)+1] = newLinks[i][1];
+          newLinks[i] = delete(newLinks[i],1);
+          newLinksInsertionPoints[i] = delete(newLinksInsertionPoints[i],1);
+          newLinksRemaining--;
+        }
+      }
+      // 4.c. Sort the gathered links and remove duplicates
+      minimalNewLinks = listOfBigintmatSort(minimalNewLinks);
+
+      // 4.d. Insert sorted links into knownLinks
+      for (i=1; i<=size(minimalNewLinks); i++)
+      {
+        knownLinks = insert(knownLinks,minimalNewLinks[i],minimalNewLinkInsertionPoint);
+        minimalNewLinkInsertionPoint++;
+      }
+      // 4.e. Increment remaining insertion points by the amount of links inserted
+      for (i=1; i<=currentLoad; i++)
+      {
+        for (j=1; j<=size(newLinksInsertionPoints[i]); j++)
+        {
+          newLinksInsertionPoints[i][j] = newLinksInsertionPoints[i][j] + size(minimalNewLinks);
+        }
+      }
+    }
+
+    dbprint("finished cones: "+string(size(finishedList))
+          +", working cones: "+string(size(workingList)));
+  }
+  return (finishedList);
+}
+
+/*
+ * PROCEDURES DOING THE ABOVE AND WRITING OUTPUT INTO FILES
+ */
+static proc writeNecessarySSIData(def S, cone C, string filename)
+{
+  setring S;
+  link ssiLink = "ssi:w "+filename;
+  write(ssiLink, stdI);
+  write(ssiLink, C);
+  close(ssiLink);
+}
+
+proc getInteriourPointsSSI(string filename, alias list symmetryGroup)
+{
+  link ssiLink = "ssi:r "+filename;
+  def I = read(ssiLink);
+  def C = read(ssiLink);
+  close(ssiLink);
+
+  bigintmat interiorPoints = relativeInteriorPointsOfFacets(C);
+  int rows = nrows(interiorPoints);
+  int cols = ncols(interiorPoints);
+  bigintmat point[1][cols];
+  list tropicalLinks;
+  list tropicalLinksModSymmetry;
+  int i, j;
+  for (i = 1; i <= rows; i++)
+  {
+    // extract submatrix
+    for (j = 1; j <= cols; j++)
+    {
+      point[1,j] = interiorPoints[i,j];
+    }
+    tropicalLinks[i] = bigintmatToIntvec(point, 1);
+    tropicalLinksModSymmetry[i] = bigintmatToIntvec
+      ( minimalRepresentative(point, symmetryGroup)
+      , 1
+      );
+  }
+  return(tropicalLinks, tropicalLinksModSymmetry);
+}
+
+proc traverseInteriourPointSSI(intvec interiourPoint, string filename, alias list symmetryGroup, alias string prefix)
+{
+  link ssiLink = "ssi:r "+filename;
+  def I = read(ssiLink);
+  // cone is irrelevant
+  close(ssiLink);
+  setUniformizingParameter(par(1));
+
+  list neighbourCones = tropicalTraversalPartialIterationStep(I, interiourPoint);
+  list points;
+  for (int i = 1; i <= size(neighbourCones); i++)
+  {
+    writeNecessarySSIData
+      ( neighbourCones[i][1]
+      , neighbourCones[i][2]
+      , prefix + "/" + string(i-1)
+      );
+    points[i] = bigintmatToIntvec
+      ( minimalRepresentative(neighbourCones[i][3], symmetryGroup)
+      , 1
+      );
+  }
+  return(points);
+}
+
+// compute a starting cone
+proc tropicalStartingConeSSI(ideal I, alias list symmetryGroup, alias string outFile)
+{
+  list gCone = tropicalStartingCone(I);
+  def initRing = gCone[1];
+  intvec uniquePoint = bigintmatToIntvec
+    ( minimalRepresentative(gCone[3], symmetryGroup)
+    , 1
+    );
+
+  writeNecessarySSIData(initRing, gCone[2], outFile);
+  return(uniquePoint);
+}
+
+// proc saturateWithRespectToVariable(ideal I, int k)
+// {
+//   ASSUME(1,k>=1);
+//   ASSUME(1,k<=nvars(basering));
+
+//   def origin = basering;
+//   int n = nvars(basering);
+//   intvec weightVector = ringlist(origin)[3][1][2];
+
+//   string newVars;
+//   for (int i=1; i<k; i++)
+//   {
+//     newVars = newVars+string(var(i))+",";
+//   }
+//   for (i=k+1; i<=n; i++)
+//   {
+//     newVars = newVars+string(var(i))+",";
+//   }
+//   newVars = newVars+string(var(k));
+//   execute("ring ringForSaturation = ("+charstr(origin)+"),("+newVars+"),dp;");
+
+//   ideal I = satstd(imap(origin,I));
+//   if (I==-1)
+//   {
+//     return (-1);
+//   }
+//   I = simplify(I,2+4+32);
+
+//   setring origin;
+//   I = imap(ringForSaturation,I);
+//   return (I);
+// }
+
+// proc stepwiseSaturation(ideal I)
+// {
+//   if (I!=1)
+//   {
+//     list variablesToBeSaturated;
+//     int l = nvars(basering);
+//     for (int i=1; i<=l; i++)
+//     { variablesToBeSaturated[i]=l-i+1; }
+
+//     while (size(variablesToBeSaturated)>0)
+//     {
+//       dbprint("variablesToBeSaturated: "+string(variablesToBeSaturated));
+//       I = saturateWithRespectToVariable(I,variablesToBeSaturated[1]);
+//       variablesToBeSaturated = delete(variablesToBeSaturated,1);
+//       if ((I==1) || (I==-1))
+//       {
+//         break;
+//       }
+//     }
+//   }
+
+//   return (I);
+// }
+
+
+// proc checkForContainmentInTropicalVariety(ideal I, intvec w, int charInt)
+// {
+//   def origin = basering;
+//   intvec wOne = oneVector(nvars(origin));
+//   execute("ring rInitialIdeal = ("+string(charInt)+"),("+varstr(origin)+"),(a(wOne),wp(w));");
+
+//   ideal I = imap(origin,I);
+//   int tinI = timer;
+//   option(redSB);
+//   ideal stdI = satstd(I);
+//   attrib(stdI,"isSB",1);
+//   ideal inI = initial(stdI,w);
+//   tinI = timer-tinI;
+//   dbprint("time used computing initial ideal: "+string(tinI));
+
+//   int tsat = timer;
+//   ideal satinI = stepwiseSaturation(inI);
+//   tsat = timer-tsat;
+//   dbprint("time used computing saturation: "+string(tsat));
+
+
+//   export(I);
+//   export(stdI);
+//   export(inI);
+//   export(satinI);
+//   return (rInitialIdeal);
+// }

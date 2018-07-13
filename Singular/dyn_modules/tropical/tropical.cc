@@ -41,12 +41,19 @@ BOOLEAN permutationGroup(leftv res, leftv args)
 BOOLEAN minimalRepresentative(leftv res, leftv args)
 {
   leftv u = args;
-  if ((u != NULL) && (u->Typ() == BIGINTMAT_CMD))
+  if ((u != NULL) && (u->Typ() == BIGINTMAT_CMD  || u->Typ() == INTVEC_CMD))
   {
     leftv v = u->next;
     if ((v != NULL) && (v->Typ() == LIST_CMD))
     {
-      bigintmat* w0 = (bigintmat*) u->Data();
+      bigintmat* w0=NULL;
+      if (u->Typ() == INTVEC_CMD)
+      {
+        intvec* w00 = (intvec*) u->Data();
+        w0 = iv2bim(w00,coeffs_BIGINT)->transpose();
+      }
+      else
+        w0 = (bigintmat*) u->Data();
       lists generators0 = (lists) v->Data();
 
       gfan::ZVector* w = bigintmatToZVector(w0);
@@ -57,6 +64,8 @@ BOOLEAN minimalRepresentative(leftv res, leftv args)
 
       res->rtyp = BIGINTMAT_CMD;
       res->data = (void*) zVectorToBigintmat(wmin);
+      if (u->Typ() == INTVEC_CMD)
+        delete w0;
       return FALSE;
     }
   }
@@ -299,7 +308,7 @@ BOOLEAN groebnerWalkNew(leftv res, leftv args)
 		for (int l=0; l<k; l++)
 			Ir->m[l] = p_PermPoly(Is->m[l],NULL,s,currRing,identity,NULL,0);
 
-		// id_Write(sigmaEnd.getPolynomialIdeal(),sigmaEnd.getPolynomialRing());		
+		// id_Write(sigmaEnd.getPolynomialIdeal(),sigmaEnd.getPolynomialRing());
 		// delete p1;
 		// delete p;
 		res->rtyp = IDEAL_CMD;

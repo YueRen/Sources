@@ -7,6 +7,7 @@ LIBRARY:         tropicalNewton.lib  Computations in Tropical Geometry
 
 AUTHORS:         Tommy Hofman,       email: thofmann@mathematik.uni.kl.de
                  Yue Ren,            email: reny@cs.bgu.ac.il
+                 Dominik Bendle,     email: bendle@rhrk.uni-kl.de
 
 OVERVIEW:
   This libraries contains algorithms for computing
@@ -42,7 +43,11 @@ PROCEDURES:
 LIB "gfan.lib";
 LIB "triang.lib";
 LIB "linalg.lib";
+<<<<<<< HEAD
 LIB "ring.lib";
+=======
+LIB "tropicalPuiseux.lib";
+>>>>>>> new: tropicalVariety.lib
 proc mod_init()
 {
   option(noredefine);
@@ -103,7 +108,7 @@ example
   val(1/12);
 }
 
-proc val(number c)
+proc val(def c, list #)
 "USAGE:   val(c); c number
 RETURN:  int, the valuation of a element in the ground field
 ASSUME:  uniformizingParameter is set and c!=0
@@ -114,16 +119,12 @@ EXAMPLE: example val; shows an example
   {
     ERROR("val: uniformizingParameter not set");
   }
-  if (c==0)
-  {
-    ERROR("val: input is 0");
-  }
-
   if (uniformizingParameter==0)
   {
     return (0);
   }
 
+<<<<<<< HEAD
   int vc = 0;
   if (pardeg(uniformizingParameter)>0)
   {
@@ -137,24 +138,51 @@ EXAMPLE: example val; shows an example
     setring origin;
   }
   else
+=======
+  if (typeof(c)=="number")
+>>>>>>> new: tropicalVariety.lib
   {
-    int c_denom = int(denominator(c));
-    int c_num = int(numerator(c));
-    int p = int(uniformizingParameter);
+    if (c==0)
+    {
+      ERROR("val: input is 0");
+    }
 
-    while (c_num mod p==0)
+    int vc = 0;
+    if (pardeg(uniformizingParameter)>0)
     {
-      c_num = c_num div p;
-      vc++;
+      def origin = basering;
+      number c_denom = denominator(c);
+      number c_num = numerator(c);
+      execute("ring r_Val="+string(char(origin))+","+string(uniformizingParameter)+",ds");
+      poly c_denom = imap(origin,c_denom);
+      poly c_num = imap(origin,c_num);
+      vc = ord(c_num)-ord(c_denom);
+      setring origin;
     }
-    while (c_denom mod p==0)
+    else
     {
-      c_denom = c_denom div p;
-      vc--;
+      int c_denom = int(denominator(c));
+      int c_num = int(numerator(c));
+      int p = int(uniformizingParameter);
+
+      while (c_num mod p==0)
+      {
+        c_num = c_num div p;
+        vc++;
+      }
+      while (c_denom mod p==0)
+      {
+        c_denom = c_denom div p;
+        vc--;
+      }
     }
+    return (vc);
   }
-
-  return (vc);
+  if (typeof(c)=="poly")
+  {
+    return (expectedValuation(c,#));
+  }
+  ERROR("val: invalid input");
 }
 example
 { "EXAMPLE:"; echo = 2;
@@ -170,6 +198,53 @@ example
   val(1/12);
 }
 
+static proc listDot(list VV, intvec expv)
+{
+  number ld;
+  for (int i=1; i<=size(expv); i++)
+  {
+    if (expv[i]>0)
+    {
+      if (typeof(VV[i])=="number")
+      {
+        ld = ld + VV[i]*expv[i];
+      }
+      else
+      {
+        ERROR("listDot: unkown or invalid relevant entry");
+      }
+    }
+  }
+  return (ld);
+}
+
+static proc expectedValuation(poly h, list VV)
+{
+  number vh = val(leadcoef(h[1]))+listDot(VV,leadexp(h[1]));
+  number vhh;
+  int amb = 0;
+  for (int i=2; i<=size(h); i++)
+  {
+    vhh = val(leadcoef(h[i]))+listDot(VV,leadexp(h[i]));
+    if (vh == vhh)
+    {
+      amb = 1;
+    }
+    if (vhh < vh)
+    {
+      vh = vhh;
+      amb = 0;
+    }
+  }
+  if (amb > 0)
+  {
+    def nothing;
+    return (nothing);
+  }
+
+  return (vh);
+}
+
 proc newtonPolygonNegSlopes(poly g, list #)
 "USAGE:   newtonPolygonNegSlopes(g,b); g poly, b int
 RETURN:  list, the negative slopes of the Newton Polygon of g
@@ -178,36 +253,101 @@ ASSUME:  uniformizingParameter is set and g univariate
 EXAMPLE: example newtonPolygonNegSlopes; shows an example
 "
 {
-  if (size(#)>0)
-  {
-    if (#[1]==1 && size(g)==2)
-    {
-      if (totalDeg(g[1])==1 && totalDeg(g[2])==0)
-      {
-        poly root = -leadcoef(g[2])/leadcoef(g[1]);
-        return (list(root));
-      }
-    }
-  }
-
+  // 0.1 check if uniformizing parameter is set
   if (defined(uniformizingParameter)==0)
   {
     ERROR("newtonPolygonNegSlopes: uniformizingParameter not set");
   }
-  int k = size(g);
-  intmat M [k+1][3];
-  for (int i=1; i<=k; i++)
+
+  // 0.2 read off optional input
+  list VV;
+  intvec optionalFlags;
+  for (int i=1; i<=size(#); i++)
   {
-    M[i,1] = 1;
-    M[i,2] = totalDeg(g[i]);
-    M[i,3] = val(leadcoef(g[i]));
+    if (typeof(#[i])=="list")
+    {
+      VV = #[i];
+    }
+    if (typeof(#[i])=="intvec")
+    {
+      optionalFlags = #[i];
+    }
+  }
+
+  // 0.3 substitute all known roots
+  for (i=1; i<=size(VV); i++)
+  {
+    if (typeof(VV[i])=="poly")
+    {
+      g = subst(g,var(i),VV[i]);
+      VV[i] = def(0);
+    }
+  }
+
+  // 0.4 check trivial input
+  if (size(g)==0)
+  {
+    ERROR("newtonPolygonNegSlopes: input is 0");
+  }
+  if (size(g)==1)
+  {
+    if (totalDeg(g[1])==0)
+    {
+      poly root = 0;
+      return (list(root));
+    }
+    list emptyList;
+    return (emptyList);
+  }
+  if (size(g)==2 && totalDeg(g[1])==1 && totalDeg(g[2])==0)
+  {
+    poly root = -leadcoef(g[2])/leadcoef(g[1]);
+    return (list(root));
+  }
+
+  // 1. write g as a polynomial in the lex. smallest variable occuring in it
+  int n = lexSmallestVariableIndex(g);
+  matrix G = coef(g,var(n));
+
+  // 2. create the matrix of vertices of the Newton polygon
+  int k = ncols(G);
+  int denom;
+  intmat M[k+1][3];
+  for (i=1; i<=k; i++)
+  {
+    def vh = val(G[2,i],VV);
+    if (typeof(vh) == "none")
+    {
+      // expected Newton Polygon is not unique, return nothing
+      def nothing;
+      return (nothing);
+    }
+    denom = int(denominator(vh));
+    // (1, deg, coef) scaled to integral point
+    M[i,1] = denom;
+    M[i,2] = denom*totalDeg(G[1,i]);
+    M[i,3] = int(numerator(vh));
+    kill vh;
   }
   M[k+1,1] = 0;
   M[k+1,2] = 0;
   M[k+1,3] = 1;
+
+  // 3. construct the Newton polygon and compute its facets
   cone Delta = coneViaPoints(M);
   bigintmat F = facets(Delta);
 
+  // 4. return the slopes in accordance with the optional flags
+  int singlePoint = 0;
+  if (size(optionalFlags)>=1)
+  {
+    singlePoint = optionalFlags[1];
+  }
+  number bound = 0;
+  if (size(optionalFlags)>=2)
+  {
+    bound = optionalFlags[2];
+  }
   list slopes;
   number slope;
   for (i=1; i<=nrows(F); i++)
@@ -215,7 +355,14 @@ EXAMPLE: example newtonPolygonNegSlopes; shows an example
     if (F[i,3]!=0)
     {
       slope = number(F[i,2])/number(F[i,3]);
-      slopes[size(slopes)+1] = slope;
+      if (size(slopes)>0 && singlePoint)
+      {
+        break;
+      }
+      if (bound==0 || slope<bound)
+      {
+        slopes[size(slopes)+1] = slope;
+      }
     }
   }
   return (slopes);
@@ -234,31 +381,6 @@ example
 }
 
 
-static proc listDot(list VV, intvec expv)
-{
-  number ld;
-  for (int i=1; i<=size(expv); i++)
-  {
-    if (expv[i]>0)
-    {
-      if (typeof(VV[i])=="number")
-      {
-        ld = ld + VV[i]*expv[i];
-      }
-      else
-      {
-				"VV:";
-				VV;
-				"expv:";
-				expv;
-        ERROR("listDot: unkown or invalid relevant entry");
-      }
-    }
-  }
-  return (ld);
-}
-
-
 static proc lexSmallestVariableIndex(poly g)
 {
   intvec alpha = leadexp(g);
@@ -270,43 +392,6 @@ static proc lexSmallestVariableIndex(poly g)
     }
   }
   return (-1);
-}
-
-static proc numbersLessThanAsRationalNumbers(number a, number b)
-{
-  int a_num = int(numerator(a));
-  int a_denom = int(denominator(a));
-  int b_num = int(numerator(b));
-  int b_denom = int(denominator(b));
-  return (a_num*b_denom-b_num*a_denom<0);
-}
-
-static proc expectedValuation(poly h, list VV)
-{
-  number vh = val(leadcoef(h[1]))+listDot(VV,leadexp(h[1]));
-  number vhh;
-  int amb = 0;
-  for (int i=2; i<=size(h); i++)
-  {
-    vhh = val(leadcoef(h[i]))+listDot(VV,leadexp(h[i]));
-    if (vh == vhh)
-    {
-      amb = 1;
-    }
-    if (numbersLessThanAsRationalNumbers(vhh,vh))
-    {
-      vh = vhh;
-      amb = 0;
-    }
-  }
-  if (amb > 0)
-  {
-    "h:"; h;
-    "VV:"; VV;
-    ERROR("expectedValuation: valuation ambiguous");
-  }
-
-  return (vh);
 }
 
 
@@ -339,64 +424,6 @@ static proc totalDeg(def g)
   }
   return (d);
 }
-
-
-static proc expectedNewtonPolygonNegSlopes(poly g, list VV, list #)
-{
-  int k = size(VV);
-  for (int i=1; i<=size(VV); i++)
-  {
-    if (typeof(VV[i])=="poly")
-    {
-      g = subst(g,var(i),VV[i]);
-    }
-  }
-
-  if (size(#)>0)
-  {
-    if (#[1]==1 && size(g)==2)
-    {
-      if (totalDeg(g[1])==1 && totalDeg(g[2])==0)
-      {
-        poly root = -leadcoef(g[2])/leadcoef(g[1]);
-        return (list(root));
-      }
-    }
-  }
-
-  int n = lexSmallestVariableIndex(g);
-  matrix G = coef(g,var(n));
-
-  k = ncols(G);
-  intmat M[k+1][3];
-  number vh;
-  for (i=1; i<=k; i++)
-  {
-    vh = expectedValuation(G[2,i],VV);
-    M[i,1] = int(denominator(vh));
-    M[i,2] = totalDeg(G[1,i]);
-    M[i,3] = int(numerator(vh));
-  }
-  M[k+1,1] = 0;
-  M[k+1,2] = 0;
-  M[k+1,3] = 1;
-
-  cone Delta = coneViaPoints(M);
-  bigintmat F = facets(Delta);
-
-  list slopes;
-  number slope;
-  for (i=1; i<=nrows(F); i++)
-  {
-    if (F[i,3]!=0)
-    {
-      slope = number(F[i,2])/number(F[i,3]);
-      slopes[size(slopes)+1] = slope;
-    }
-  }
-  return (slopes);
-}
-
 
 static proc randomValuedNumber(list #)
 {
@@ -434,6 +461,25 @@ static proc listOfNumbersToMatrix(list L)
   return (Lmat);
 }
 
+proc scaleAndCastToIntvec(matrix L)
+{
+  int k = ncols(L);
+  intvec denoms;
+  intvec enums;
+  int denoms_lcm = int(denominator(number(L[1,1])));
+  for (int i=2; i<=k; i++)
+  {
+    denoms_lcm = lcm(denoms_lcm,int(denominator(number(L[1,i]))));
+  }
+
+  intvec w;
+  for (i=1; i<=k; i++)
+  {
+    w[i] = int(number(L[1,i])*denoms_lcm);
+  }
+  return(w);
+}
+
 proc cccMatrixToPositiveIntvec(matrix L)
 "USAGE:   cccMatrixToPositiveIntvec(M); M matrix
 RETURN:  intvec, strictly positive equivalent as weight vector to row vector in M
@@ -442,24 +488,7 @@ ASSUME:  constant coefficient case only,
 EXAMPLE: example cccMatrixToPositiveIntvec; shows an example
 "
 {
-  int k = ncols(L);
-  intvec denoms;
-  intvec enums;
-  int denoms_gcd = int(denominator(number(L[1,1])));
-  int denoms_prod = int(denominator(number(L[1,1])));
-  for (int i=2; i<=k; i++)
-  {
-    denoms_gcd = gcd(denoms_gcd,int(denominator(number(L[1,i]))));
-    denoms_prod = denoms_prod*int(denominator(number(L[1,i])));
-  }
-  int denoms_lcm = denoms_prod div denoms_gcd;
-
-  intvec w;
-  for (i=1; i<=k; i++)
-  {
-    w[i] = int(number(L[1,i])*denoms_lcm);
-  }
-  return (addOneVectorUntilPositive(w));
+  return (addOneVectorUntilPositive(scaleAndCastToIntvec(L)));
 }
 example
 { "EXAMPLE:"; echo = 2;
@@ -506,7 +535,7 @@ static proc addOneVectorUntilPositive(intvec w)
 }
 
 proc tropicalPointNewton(ideal I, list #)
-"USAGE:   tropicalPointsLasVegas(I); I ideal
+"USAGE:   tropicalPointNewton(I); I ideal
 RETURN:  matrix, a matrix containing a tropical point as row vector
 ASSUME:  uniformizingParameter is set and the top-dimensional component of I is monomial free
 NOTE:    if printlevel sufficiently high will print intermediate data and timings
@@ -519,7 +548,7 @@ EXAMPLE: example tropicalPointNewton; shows an example
     ERROR("tropicalPointNewton: uniformizingParameter not set");
   }
   int ttotal = timer;
-  ring origin0 = basering;
+  ring origin = basering;
 
   int tindepSet = timer;
   ideal stdI = std(I);
@@ -528,7 +557,7 @@ EXAMPLE: example tropicalPointNewton; shows an example
   tindepSet = timer - tindepSet;
   dbprint("maximal independent set: "+string(u));
 
-  int n = nvars(origin0);
+  int n = nvars(origin);
   string vars;
   string subststr = "ideal J = subst(I,";
   list VV;
@@ -551,7 +580,11 @@ EXAMPLE: example tropicalPointNewton; shows an example
   subststr = string(subststr[1..size(subststr)-1])+");";
   execute(subststr);
 
+<<<<<<< HEAD
   ring s = create_ring(ringlist(origin)[1], "("+vars+")", "lp", "no_minpoly");
+=======
+  execute("ring s = ("+charstr(origin)+"),("+vars+"),lp;");
+>>>>>>> new: tropicalVariety.lib
   ideal J = imap(origin,J);
   int tstdlp = timer;
   dbprint("computing triangular decomposition (picking first factor)");
@@ -565,34 +598,20 @@ EXAMPLE: example tropicalPointNewton; shows an example
   }
   if (!isTriangularSet(J))
   {
-		"dimension: "+string(dim(J));
     J = triangL(J)[1];
   }
   tstdlp = timer - tstdlp;
 
-  // if (deg(J)>1)
-  // {
-  //   "calling magma...";
-  //   list T = tropicalVarietyNewtonWithMagma(J,1000000,"false");
-	// 	setring origin;
-	// 	list T = imap(s,T);
-	// 	int j=1;
-	// 	for (int i=1; i<=size(VV); i++)
-	// 	{
-	// 		if (typeof(VV[i])=="none")
-	// 		{
-	// 			VV[i] =  T[1][j];
-	// 			j++;
-	// 		}
-	// 	}
-	// 	matrix w = -listOfNumbersToMatrix(VV);
-  //   return (w);
-  // }
-
   dbprint("starting analysis of Newton polygons");
   setring origin;
   J = imap(s,J);
-	J;
+
+  // if (deg(I)>1)
+  // {
+  //   "calling magma...";
+  //   list T = tropicalVarietyNewtonWithMagma(I,1000000);
+  //   return (T[1]);
+  // }
 
   int tnewton = timer;
   list Vlocal = newtonPolygonNegSlopes(J[1],1);
@@ -602,16 +621,13 @@ EXAMPLE: example tropicalPointNewton; shows an example
 
   for (i=2; i<=size(J); i++)
   {
-    Vlocal = expectedNewtonPolygonNegSlopes(J[i],VV,1);
+    Vlocal = newtonPolygonNegSlopes(J[i],VV,1);
     l = lexSmallestVariableIndex(J[i]);
     dbprint("possible values or valuations for "+string(var(l))+" (picking first): "+string(Vlocal));
     VV[l] = Vlocal[1];
   }
   tnewton = timer-tnewton;
   matrix w = -listOfNumbersToMatrix(VV);
-
-	setring origin0;
-	matrix w = imap(origin,w);
 
   ttotal = timer-ttotal;
   dbprint("time used total: "+string(ttotal));
@@ -705,71 +721,53 @@ proc computeTriangularDecompositionIfNecessary(ideal I)
   return (triangL(I));
 }
 
-
-proc tropicalVarietyNewton(ideal I)
-"USAGE:   tropicalVarietyNewton(I); I ideal
-RETURN:  matrix, a matrix containing all elements of the tropical variety
-ASSUME:  uniformizingParameter is set, I monomial free and zero-dimensional
-EXAMPLE: example tropicalVarietyNewton; shows an example
-"
+static proc tropicalVarietyNewtonTriang(ideal J, intvec optionalFlags)
 {
-  if (defined(uniformizingParameter)==0)
-  {
-    ERROR("tropicalVarietyNewton: uniformizingParameter not set");
-  }
-  if(ordstr(basering)[1,2]!="lp")
-  {
-    ERROR("tropicalVarietyNewton: order must be lp");
-  }
-
-  list triangI = computeTriangularDecompositionIfNecessary(I);
-
-  int i,ii,j,jj,k,l;
-  list Vlocal;
-  ideal J;
+  // 1. compute the negative slopes of the first Newton polgyon
+  //    and add them to the working list VV
   list VV;
-  for (ii=1; ii<=size(triangI); ii++)
+  list Vlocal = newtonPolygonNegSlopes(J[1],optionalFlags);
+  int l = lexSmallestVariableIndex(J[1]);
+  for (int jj=1; jj<=size(Vlocal); jj++)
   {
-    J = triangI[ii];
-    Vlocal = newtonPolygonNegSlopes(J[1],1);
-    for (jj=1; jj<=size(Vlocal); jj++)
-    {
-      list Vjj;
-      l = lexSmallestVariableIndex(J[1]);
-      Vjj[l] = Vlocal[jj];
-      VV[jj] = Vjj;
-      kill Vjj;
-    }
-
-    for (i=2; i<=size(J); i++)
-    {
-      k = size(VV);
-      for (jj=1; jj<=k; jj++)
-      {
-        list Vlocal(jj) = expectedNewtonPolygonNegSlopes(J[i],VV[jj],1);
-      }
-      l = lexSmallestVariableIndex(J[i]);
-      for (jj=1; jj<=k; jj++)
-      {
-        for (j=1; j<=size(Vlocal(jj)); j++)
-        {
-          if (j==1)
-          {
-            VV[jj][l] = Vlocal(jj)[1];
-          }
-          else
-          {
-            VV[size(VV)+1] = VV[jj];
-            VV[size(VV)][l] = Vlocal(jj)[j];
-          }
-        }
-      }
-      for (jj=1; jj<=k; jj++)
-      {
-        kill Vlocal(jj);
-      }
-    }
+    list Vjj;
+    Vjj[l] = Vlocal[jj];
+    VV[jj] = Vjj;
+    kill Vjj;
   }
+
+  int j, k;
+  for (int i=2; i<=size(J); i++)
+  {
+    // 2. cycle through all elements of the working list
+    //    and compute the negative slopes of the i-th Newton polygon it implies.
+    //    If it is ambiguous, fall back to magma.
+    k = size(VV);
+    for (jj=1; jj<=k; jj++)
+    {
+      def Vlocal(jj) = newtonPolygonNegSlopes(J[i],VV[jj],optionalFlags);
+      if (typeof(Vlocal(jj))=="none")
+      {
+        dbprint("newton polygon ambiguous, falling back to tropicalVarietyPuiseux ...");
+        return(tropicalVarietyNewtonWithMagma(J, optionalFlags));
+      }
+    }
+    // 3. add the newly computed negative slopes to the working list
+    //    and delete all the old ones.
+    l = lexSmallestVariableIndex(J[i]);
+    for (jj=1; jj<=k; jj++)
+    {
+      for (j=1; j<=size(Vlocal(jj)); j++)
+      {
+        VV[size(VV)+1] = VV[jj];
+        VV[size(VV)][l] = Vlocal(jj)[j];
+      }
+      kill Vlocal(jj);
+    }
+    VV = deleteSublist(intvec(1..k),VV);
+  }
+
+  // 4. Prepare the return value
   list TI;
   list VVjj;
   for (jj=1; jj<=size(VV); jj++)
@@ -788,16 +786,71 @@ EXAMPLE: example tropicalVarietyNewton; shows an example
         Vjj[1,i] = val(leadcoef(VVjj[i]));
       }
     }
-    // matrix Vjj[1][size(VVjj)] = VVjj[1..size(VVjj)];
     TI[jj] = -Vjj;
     kill Vjj;
+  }
+  return (TI);
+}
+
+proc tropicalVarietyNewton(ideal I, list #)
+"USAGE:   tropicalVarietyNewton(I[, s[, b]]); I ideal, s, b int
+RETURN:  matrix, a matrix containing all elements of the tropical variety;
+         if s is not 0, we compute only one point,
+         if b is specified, return only elements in [-b, b]^N
+ASSUME:  uniformizingParameter is set, I monomial free and zero-dimensional
+EXAMPLE: example tropicalVarietyNewton; shows an example
+"
+{
+  if (defined(uniformizingParameter)==0)
+  {
+    ERROR("tropicalVarietyNewton: uniformizingParameter not set");
+  }
+  if(ordstr(basering)[1,2]!="lp")
+  {
+    ERROR("tropicalVarietyNewton: order must be lp");
+  }
+
+  int bound = 0;
+  int singlePoint = 0;
+  if (size(#) > 0)
+  {
+    if (typeof(#[1]) <> "int")
+    {
+      ERROR("tropicalVarietyNewton: wrong optional parameter");
+    }
+    singlePoint = #[1];
+    if (size(#) > 1)
+    {
+      if (typeof(#[2]) <> "int")
+      {
+        ERROR("tropicalVarietyNewton: wrong optional parameter");
+      }
+      bound = #[2];
+    }
+  }
+
+  if (singlePoint && bound > 0)
+  {
+    "Warning: result may be empty";
+  }
+
+  int i;
+  list triangI = computeTriangularDecompositionIfNecessary(I);
+  list TI = list();
+  for (i=1; i<=size(triangI); i++)
+  {
+    TI = TI + tropicalVarietyNewtonTriang(triangI[i],intvec(singlePoint, bound));
+    if (singlePoint && size(TI) > 0)
+    {
+      return(TI);
+    }
   }
 
   return (TI);
 }
 example
 { "EXAMPLE:"; echo = 2;
-  LIB "poly.lib";
+  //LIB "poly.lib";
   ring r = (0,t),(z,y,x),lp;
   number uniformizingParameter = t;
   export(uniformizingParameter);
@@ -881,9 +934,18 @@ static proc pivotIndices(matrix H)
 }
 
 
-/**
- * Creates a new ring without the ith variable and prescribed ordering
- */
+static proc varstrIntvec(intvec p)
+{
+  string s;
+  for (int i=1; i<=size(p); i++)
+  {
+    s = s+varstr(p[i])+",";
+  }
+  s = s[1..size(s)-1];
+  return (s);
+}
+
+
 static proc substRing(int i, string orderstring)
 {
   int n = nvars(basering);
@@ -902,7 +964,11 @@ static proc substRing(int i, string orderstring)
       intvec p = 1..i-1,i+1..n;
     }
   }
+<<<<<<< HEAD
   ring ssub = create_ring("(0,t)", "("+varstrIntvec(p)+")", orderstring);
+=======
+  execute("ring ssub = (0,t),("+varstrIntvec(p)+"),"+orderstring+";");
+>>>>>>> new: tropicalVariety.lib
   return (ssub);
 }
 
@@ -1070,32 +1136,19 @@ EXAMPLE: example tropicalLinkNewton; shows an example
     kill ssubstDP;
     def ssubstLP = substRing(i,"lp");
     setring ssubstLP;
+    number uniformizingParameter=t;
+    export(uniformizingParameter);
+
     ideal substImagePos = imap(srestr,substImagePos);
     map substMapPos = srestr,substImagePos;
     ideal inIPos = std(substMapPos(inI));
-    number uniformizingParameter=t;
-    export(uniformizingParameter);
-    if (totalDeg(inIPos)>1)
-    {
-      "calling magma...";
-      list Tpos = tropicalVarietyNewtonWithMagma(inIPos);
-    }
-    else
-    {
-      list Tpos = tropicalVarietyNewton(inIPos);
-    }
+    list Tpos = tropicalVarietyNewton(inIPos);
+
     ideal substImageNeg = imap(srestr,substImageNeg);
     map substMapNeg = srestr,substImageNeg;
     ideal inINeg = std(substMapNeg(inI));
-    if (totalDeg(inINeg)>1)
-    {
-      "calling magma...";
-      list Tneg = tropicalVarietyNewtonWithMagma(inINeg);
-    }
-    else
-    {
-      list Tneg = tropicalVarietyNewton(inINeg);
-    }
+    list Tneg = tropicalVarietyNewton(inINeg);
+
     if (size(Tneg)>0)
     {
       setring origin;
@@ -1284,8 +1337,25 @@ static proc isMacOSX()
   return (0);
 }
 
-proc finalizeMagmaFile(string filename, string all, int bound)
+proc finalizeMagmaFile(string filename, intvec #)
 {
+  string all = "true";
+  if (size(#)>=1)
+  {
+    if (#[1]==1)
+    {
+      all = "false";
+    }
+  }
+  string bound = "Infinity()";
+  if (size(#)>=2)
+  {
+    if (#[2]>0)
+    {
+      bound = string(#[2]);
+    }
+  }
+
   if (isMacOSX())
   {
     int dummy = system("sh","sed -i '' 's/\_/\./g' "+filename+".m");
@@ -1294,53 +1364,12 @@ proc finalizeMagmaFile(string filename, string all, int bound)
   {
     int dummy = system("sh","sed -i 's/\_/\./g' "+filename+".m");
   }
-  write(":a "+filename+".m", "T := TropicalVariety(F : WithMultiplicity:=false, All:="+all+", bound:="+string(bound)+");");
+  write(":a "+filename+".m", "T := TropicalVariety(F : WithMultiplicity:=false, All:="+all+", bound:="+bound+");");
   write(":a "+filename+".m", "_ := PrintForSingular(\""+filename+".sing\", T);");
   write(":a "+filename+".m", "exit;");
 }
 
-proc componentwiseMin(intvec v, intvec w)
-{
-  intvec vw;
-  for (int i=1; i<=size(v); i++)
-  {
-    vw[i] = min(v[i],w[i]);
-  }
-  return (vw);
-}
-
-proc divideByMaximalMonomial(poly f)
-{
-  intvec expv = leadexp(f);
-  for (int i=1; i<=size(f); i++)
-  {
-    expv = componentwiseMin(expv,leadexp(f[i]));
-  }
-  poly maximalMonomial = 1;
-  for (i=1; i<=size(expv); i++)
-  {
-    maximalMonomial = maximalMonomial*var(i)^expv[i];
-  }
-  return (f/maximalMonomial);
-}
-
-proc saturateTriangularSets(list triangI)
-{
-  ideal F;
-  int i,j;
-  for (i=1; i<=size(triangI); i++)
-  {
-    F = triangI[i];
-    for (j=1; j<=size(F); j++)
-    {
-      F[j] = divideByMaximalMonomial(F[j]);
-    }
-    triangI[i] = F;
-  }
-  return (F);
-}
-
-proc tropicalVarietyNewtonWithMagma(ideal I, list #)
+proc tropicalVarietyNewtonWithMagma(ideal I, intvec #)
 {
   def origin = basering;
   int n = nvars(basering);
@@ -1355,7 +1384,6 @@ proc tropicalVarietyNewtonWithMagma(ideal I, list #)
   execute("ring rTropCallMagma = (0,t),("+magmaVariables+"),lp;");
   ideal I = fetch(origin,I);
   list triangI = computeTriangularDecompositionIfNecessary(I);
-  triangI = saturateTriangularSets(triangI);
 
   if (size(triangI)>1)
   {
@@ -1364,22 +1392,7 @@ proc tropicalVarietyNewtonWithMagma(ideal I, list #)
 
   initializeMagmaFile(filename,nvars(basering));
   writeTriangularSet(triangI[1],filename);
-  if (size(#)==0)
-  {
-    finalizeMagmaFile(filename,"true",1);
-  }
-	if (size(#)==1)
-	{
-    finalizeMagmaFile(filename,"true",#[1]);
-	}
-	if (size(#)==2)
-  {
-    finalizeMagmaFile(filename,"false",#[1]);
-  }
-	if (size(#)>2)
-	{
-		ERROR("blabla");
-	}
+  finalizeMagmaFile(filename,#);
 
   dbprint("computing tropical varieties using magma...");
   int dummy = system("sh","magma -b "+filename+".m");
@@ -1402,49 +1415,6 @@ proc tropicalVarietyNewtonWithMagma(ideal I, list #)
 
   setring origin;
   return (fetch(rTropCallMagma,TI));
-}
-
-/***
- * Given a reduced Groebner basis and a weight on a facet of the tropical variety, does:
- *   1) Computes the tropical link around the facet.
- *   2) Computes the adjacent decorated Groebner cone in the tropical variety, i.e.
- *       - constructs a ring equipped with the proper adjacent ordering
- *       - does a Groebner flip to compute a reduced Groebner basis in that ordering
- *       - constructs the adjacent Groebner cone
- *       - computes the sum of all rays of the Groebner cone
- * Returns a list of lists, one for each ray of the tropical link, containing:
- *   - (ideal) a reduced Groebner basis with respect to an adjacent ordering
- *   - (def) a ring equipped with the adjacent ordering
- *   - (cone) an adjacent maximal tropical Groebner cone
- *   - (bigintmat) the sum of all rays of the adjacent Groebner cone
- **/
-proc tropicalTraversalPartialIterationStep(ideal I, intvec interiorFacetPoint, string uniquePrefix)
-{
-  def origin = basering;
-  list TIw;
-
-  // 1) Compute the tropical link around the facet
-  ideal inI = initial(I,interiorFacetPoint);
-  list tropicalLink = tropicalLinkNewton(inI);
-
-  // 2) For each tropical link
-  intvec wOnes;
-  for (int i=1; i<=nvars(basering); i++)
-  {
-    wOnes[i]=1;
-  }
-  for (i=1; i<=size(tropicalLink); i++)
-  {
-    matrix outerNormalVectorMatrix = tropicalLink[i];
-    intvec outerNormalVector = scaleAndCastToIntvec(outerNormalVectorMatrix); // todo
-
-    execute("ring "+uniquePrefix+"_ring("+string(i)+") = ("+charstr(origin)+"),("+varstr(origin)+"),(a(wOnes),a(interiorFacetPoint),a(outerNormalVector),lp);");
-    ideal inI = std(fetch(origin,inI));
-
-
-  }
-
-  return (TIw);
 }
 
 // proc saturateWithRespectToVariable(ideal I, int k)

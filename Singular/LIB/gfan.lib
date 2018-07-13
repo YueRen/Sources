@@ -45,6 +45,7 @@ PROCEDURES:
        randomPoint(c);       a random point in the relative interior of c
        rays(c);              generators of the rays of c
        relativeInteriorPoint(c); point in the relative interior of c
+       relativeInteriorPointsOfFacets(c); points in the relative interiors of each facet of c
        semigroupGenerator(c); generator of Z^n intersected with c modulo Z^n intersected with the lineality space of c
        setLinearForms(c);    stores linear forms in c
        setMultiplicity(c);   stores a multiplicity in c
@@ -1123,6 +1124,30 @@ example
   relativeInteriorPoint(c2);
 }
 
+proc relativeInteriorPointsOfFacets()
+"USAGE:   relativeInteriorPointsOfFacets(c);  c cone
+RETURN:  bigintmat, a point in the relative interior of each facet of c
+NOTE:    not unique.
+EXAMPLE: example relativeInteriorPointsOfFacets; shows an example
+"
+{
+
+}
+example
+{
+  "EXAMPLE:"; echo = 2;
+  intmat M1[2][2]=
+    1,0,
+    0,1;
+  cone c1=coneViaPoints(M1);
+  relativeInteriorPointsOfFacets(c1);
+  intmat M2[2][2]=
+    1,0,
+    1,1;
+  cone c2=coneViaPoints(M2);
+  relativeInteriorPointsOfFacets(c2);
+}
+
 proc semigroupGenerator()
 "USAGE:   semigroupGenerator(c);  c cone
 RETURN:  bigintmat, the generator of Z^n intersected with c modulo Z^n intersected with the lineality space of c
@@ -1229,6 +1254,30 @@ example
     0,1;
   cone c2=coneViaPoints(M2);
   uniquePoint(c2);
+}
+
+
+proc uniquePointsOfFacets()
+"USAGE:   uniquePointsOfFacets(c);  c cone
+RETURN:  bigintmat, unique points in facets of c stable under reflections at coordinate hyperplanes
+EXAMPLE: example uniquePoint; shows an example
+"
+{
+
+}
+example
+{
+  "EXAMPLE:"; echo = 2;
+  intmat M1[2][2]=
+    1,0,
+    0,1;
+  cone c1=coneViaPoints(M1);
+  uniquePointsOfFacets(c1);
+  intmat M2[2][2]=
+    -1,0,
+    0,1;
+  cone c2=coneViaPoints(M2);
+  uniquePointsOfFacets(c2);
 }
 
 

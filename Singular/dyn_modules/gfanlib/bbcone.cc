@@ -1052,6 +1052,44 @@ BOOLEAN uniquePoint(leftv res, leftv args)
   return TRUE;
 }
 
+gfan::ZMatrix uniquePointsOfFacets(const gfan::ZCone* zc)
+{
+  gfan::ZMatrix F = zc->getFacets();
+  gfan::ZMatrix R = zc->extremeRays();
+
+  gfan::ZMatrix uniquePoints(0,F.getWidth());
+  for (int i=0; i<F.getHeight(); i++)
+  {
+    gfan::ZVector uniquePoint(F.getWidth());
+    for (int j=0; j<R.getHeight(); j++)
+    {
+      if (dot(F[i].toVector(),R[j].toVector()).isZero())
+      {
+        uniquePoint += R[j].toVector();
+      }
+    }
+    uniquePoints.appendRow(uniquePoint);
+  }
+  return uniquePoints;
+}
+
+BOOLEAN uniquePointsOfFacets(leftv res, leftv args)
+{
+  leftv u = args;
+  if ((u != NULL) && (u->Typ() == coneID))
+  {
+    gfan::initializeCddlibIfRequired();
+    gfan::ZCone* zc = (gfan::ZCone*)u->Data();
+    gfan::ZMatrix zv = uniquePointsOfFacets(zc);
+    res->rtyp = BIGINTMAT_CMD;
+    res->data = (void*) zMatrixToBigintmat(zv);
+    gfan::deinitializeCddlibIfRequired();
+    return FALSE;
+  }
+  WerrorS("uniquePointsOfFacets: unexpected parameters");
+  return TRUE;
+}
+
 int siRandBound(const int b)
 {
   int n = 0;
@@ -1073,13 +1111,6 @@ gfan::ZVector randomPoint(const gfan::ZCone* zc, const int b)
   gfan::ZMatrix rays = zc->extremeRays();
   for (int i=0; i<rays.getHeight(); i++)
     rp += siRandBound(b) * rays[i].toVector();
-
-  // gfan::ZMatrix lins = zc->generatorsOfLinealitySpace();
-  // for (int i=0; i<lins.getHeight(); i++)
-  // {
-  //   int n = siRandBound(b);
-  //   rp = rp + n * lins[i].toVector();
-  // }
 
   return rp;
 }
@@ -1821,6 +1852,26 @@ gfan::ZMatrix interiorPointsOfFacets(const gfan::ZCone &zc, const std::set<gfan:
 }
 
 
+BOOLEAN relativeInteriorPointsOfFacets(leftv res, leftv args)
+{
+  leftv u = args;
+  if ((u != NULL) && (u->Typ() == coneID) && (u->next==NULL))
+  {
+    gfan::initializeCddlibIfRequired();
+    gfan::ZCone* zc = (gfan::ZCone*) u->Data();
+    std::set<gfan::ZVector> exceptThese;
+
+    res->rtyp = BIGINTMAT_CMD;
+    res->data = (void*) zMatrixToBigintmat(interiorPointsOfFacets(*zc,exceptThese));
+
+    gfan::deinitializeCddlibIfRequired();
+    return FALSE;
+  }
+  WerrorS("relattiveInteriorPointsOfFacets: unexpected parameters");
+  return TRUE;
+}
+
+
 /***
  * Computes a relative interior point and an outer normal vector for each facet of zc
  **/
@@ -2120,11 +2171,13 @@ void bbcone_setup(SModulFunctions* p)
   p->iiAddCproc("gfan.lib","randomPoint",FALSE,randomPoint);
   p->iiAddCproc("gfan.lib","rays",FALSE,rays);
   p->iiAddCproc("gfan.lib","relativeInteriorPoint",FALSE,relativeInteriorPoint);
+  p->iiAddCproc("gfan.lib","relativeInteriorPointsOfFacets",FALSE,relativeInteriorPointsOfFacets);
   p->iiAddCproc("gfan.lib","semigroupGenerator",FALSE,semigroupGenerator);
   p->iiAddCproc("gfan.lib","setLinearForms",FALSE,setLinearForms);
   p->iiAddCproc("gfan.lib","setMultiplicity",FALSE,setMultiplicity);
   p->iiAddCproc("gfan.lib","span",FALSE,impliedEquations);
   p->iiAddCproc("gfan.lib","uniquePoint",FALSE,uniquePoint);
+  p->iiAddCproc("gfan.lib","uniquePointsOfFacets",FALSE,uniquePointsOfFacets);
   p->iiAddCproc("gfan.lib","faceContaining",FALSE,faceContaining);
   p->iiAddCproc("gfan.lib","onesVector",FALSE,onesVector);
   p->iiAddCproc("gfan.lib","convexIntersectionOld",FALSE,convexIntersectionOld);

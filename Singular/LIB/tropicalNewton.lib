@@ -436,7 +436,7 @@ static proc randomValuedNumber(list #)
 
   number c = random(1,99)*uniformizingParameter^v;
   c = c+random(0,99)*uniformizingParameter^(v+random(0,n div 3));
-  c = c+random(0,99)*uniformizingParameter^(v+random(0,n div 3));
+  // c = c+random(0,99)*uniformizingParameter^(v+random(0,n div 3));
 
   return (c);
 }

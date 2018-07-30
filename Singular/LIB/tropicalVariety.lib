@@ -507,7 +507,7 @@ proc tropicalVarietyFull(ideal I, list #)
     }
 
     // 2.b. Run currentLoad parallel tropicalTraversalStep
-    out = fakeParallelWaitAll(command,args);
+    out = parallelWaitAll(command,args);
 
     // 2.c. Parse currentLoad outputs of tropicalTraversalStep,
     //        and count the total number of newCones and newLinks

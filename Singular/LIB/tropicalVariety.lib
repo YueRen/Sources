@@ -53,6 +53,17 @@ proc mod_init()
 
 ///////////////////////////////////////////////////////////////////////////////
 
+proc decoratedGroebnerConeFromIdeals(ideal I, ideal inI, list symmetryGroup)
+{
+  decoratedGroebnerCone sigma;
+  sigma.polynomialRing = basering;
+  sigma.polynomialIdeal = I;
+  sigma.uniformizingParameter = uniformizingParameter;
+  sigma.polyhedralCone = groebnerConeFromIdeals(I,inI);
+  sigma.orbitIdentifier = minimalRepresentative(uniquePoint(sigma.polyhedralCone),symmetryGroup);
+  return (sigma);
+}
+
 // copied from groebnerCone.cc
 proc groebnerConeFromIdeals(ideal I, ideal inI)
 {
@@ -446,9 +457,17 @@ proc tropicalVarietyFull(ideal I, list #)
   // 0. Save original ring and read in symmetry group
   def origin = basering;
   list symmetryGroup;
-  if (size(#) > 0)
+  while (size(#) > 0)
   {
-    symmetryGroup = #;
+    if (typeof(#[1])=="list")
+    {
+      symmetryGroup = #[1];
+    }
+    if (typeof(#[1])=="decoratedGroebnerCone")
+    {
+      decoratedGroebnerCone startingCone = #[1];
+    }
+    # = delete(#,1);
   }
 
   // 1. Compute a starting cone and initialize traversal data:
@@ -466,7 +485,11 @@ proc tropicalVarietyFull(ideal I, list #)
   //    - knownLinks: a list of signatures of codimension-one Groebner cones
   //        in the tropical variety whose adjacent maximal cones are guaranteed to be known
   //        this exists to avoid costly redundant computations
-  decoratedGroebnerCone startingCone = tropicalStartingCone(I,symmetryGroup);
+  ~;
+  if (!defined(startingCone))
+  {
+    decoratedGroebnerCone startingCone = tropicalStartingCone(I,symmetryGroup);
+  }
   list finishedList;
   list workingList = startingCone;
   list knownCones = startingCone.orbitIdentifier;

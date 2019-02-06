@@ -281,20 +281,17 @@ BOOLEAN numberOfConesOfDimension(leftv res, leftv args)
       if (w != NULL)
       {
         if (w->Typ() == INT_CMD)
+          o = (int)(long)w->Data();
+        else
         {
-          int o = (int)(long)w->Data();
-          leftv x=w->next;
-          if ((x != NULL) && (x->Typ() == INT_CMD) && (x->next==NULL))
-          {
-            int m = (int)(long)x->Data();
-          }
-          else
-          {
-            WerrorS("numberOfConesOfDimension: unexpected parameters");
-            gfan::deinitializeCddlibIfRequired();
-            return TRUE;
-          }
+          WerrorS("numberOfConesOfDimension: unexpected parameters");
+          gfan::deinitializeCddlibIfRequired();
+          return TRUE;
         }
+
+        leftv x=w->next;
+        if ((x != NULL) && (x->Typ() == INT_CMD) && (x->next==NULL))
+          m = (int)(long)x->Data();
         else
         {
           WerrorS("numberOfConesOfDimension: unexpected parameters");
@@ -323,12 +320,6 @@ BOOLEAN numberOfConesOfDimension(leftv res, leftv args)
         gfan::deinitializeCddlibIfRequired();
         return FALSE;
       }
-
-      int n = zf->numberOfConesOfDimension(d,0,mm);
-      res->rtyp = INT_CMD;
-      res->data = (void*) (long) n;
-      gfan::deinitializeCddlibIfRequired();
-      return FALSE;
     }
   }
   WerrorS("numberOfConesOfDimension: unexpected parameters");

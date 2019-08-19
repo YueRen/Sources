@@ -1,0 +1,1780 @@
+//////////////////////////////////////////////////////////////////////////////
+version="version tropicalProjection.lib 4.1.2 Feb_2019 "; // $Id$
+category="Algebraic Geometry";
+info="
+LIBRARY:  tropicalProjection.lib   Computation of zero-dimensional tropical varieties via projection
+
+AUTHORS:  P. Goerlach, paul.goerlach at mis.mpg.de @*
+          Y. Ren, yue.ren at mis.mpg.de @*
+          L. Zhang, leonyz at berkeley.edu
+
+OVERVIEW:
+This library is dedicated to computing zero-dimensional tropical varieties using projection techniques.
+
+REFERENCES:
+P. Goerlach, Y. Ren. L. Zhang: Computing zero-dimensional tropical varieties via projections, arXiv:1908.03486
+
+
+KEYWORDS:
+tropical geometry, tropical variety
+
+
+PROCEDURES:
+binaryEliminant                   computes the eliminant for a bivariate ideal
+                                    given by a near-triangular generating set
+binaryEliminantMinpoly            helper function to be called in binaryEliminant
+binaryEliminantFGLM               helper function to be called in binaryEliminant
+binaryEliminantResultant          helper function to be called in binaryEliminant
+binaryEliminantGroebner           helper function to be called in binaryEliminant
+binaryEliminantDPthenFGLM         helper function to be called in binaryEliminant
+fastExponentiation                computes g^k mod f for f,g polynomials
+                                    and k a positive integer
+newtonPolygonNegSlopesWithMult    returns the negative slopes of the Newton polgyon
+                                    with multiplicity
+tropicalProjection                computes a (skew) projection of a zero-dimensional
+                                    tropical variety
+tropicalVarietyViaProjection      computes a zero-dimensional tropical variety
+                                    via projection
+unitVector                        constructs a unit vector in euclidean space
+valuation                         Valuation of an element in the base field
+";
+
+
+LIB "gfan.lib";
+LIB "parallel.lib";
+LIB "linalg.lib";
+LIB "modular.lib";
+
+static proc mod_init()
+{
+  option(noredefine);
+  option(redSB);
+}
+
+
+static proc candidateSet(list WW, list #)
+"USAGE:  candidateSet(list WW[, int originalCall]);
+ASSUME:  each entry of WW is a list incomplete rational vectors
+         with common support
+         originalCall = 1 by default, in recusive calls, originalCall will be set to 0
+RETURN:  list, a list of incomplete rational vectors projecting onto the WW[i]
+EXAMPLE: example candidateSet; shows an example
+"
+{
+  int originalCall = 1;
+  if(size(#) > 0)
+  {
+    originalCall = #[1];
+  }
+  // construct candidate set recursively
+  // ends if WW has only one entry.
+  if(size(WW) == 1)
+  {
+    return(WW[1]);
+  }
+
+  // merge the first two entries of WW
+  list W1 = WW[1];
+  list W2 = WW[2];
+
+  // 0: compute the common support of W1 and W2
+  //    and the difference in support between W2 and W1
+  int n = nvars(basering);
+  intvec commonSupport;
+  intvec differenceInSupport;
+  int kComm = 1;
+  int kDiff = 1;
+  for(int i = 1; i <= n; i++)
+  {
+    if(typeof(W2[1][i]) != "none")
+    {
+      if(typeof(W1[1][i]) != "none")
+      {
+        commonSupport[kComm] = i;
+        kComm++;
+      }
+      else
+      {
+        differenceInSupport[kDiff] = i;
+        kDiff++;
+      }
+    }
+  }
+
+  // 1: Merge W1 and W2
+  list W12;
+  int k = 1;
+  intvec check1; // checks whether all points in W1 were used
+          // this check should only be carried out in the original call to
+          // "candidateSet", not in later recursive calls.
+  intvec check2; // checks whether all points in W2 were used
+  // Compare each entry w1 of W1
+  // with each entry w2 of W2
+  for(int i1 = 1; i1 <= size(W1); i1++)
+  {
+    list w1 = W1[i1];
+    for(int i2 = 1; i2 <= size(W2); i2++)
+    {
+      list w2 = W2[i2];
+      // If w1 and w2 do not coincide on the common support
+      // skip this pair
+      if(kComm > 1)
+      {
+        if(w1[commonSupport] != w2[commonSupport])
+        {
+          i2++;continue;
+        }
+      }
+      // Merge w1 and w2
+      list w12 = w1;
+      if(kDiff > 1)
+      {
+        w12[differenceInSupport] = w2[differenceInSupport];
+      }
+      W12[k] = w12;
+      k++;
+      check1[i1] = 1;
+      check2[i2] = 1;
+    }
+  }
+
+  if((originalCall && sum(check1) != size(W1)) || sum(check2) != size(W2))
+  {
+    print(WW);
+    ERROR("candidateSet: Incompatible input.");
+  }
+
+  WW = delete(WW,1);
+  WW[1] = W12;
+  return(candidateSet(WW,0));
+}
+example
+{
+  "EXAMPLE:"; echo = 2;
+  ring r = 0,x,dp;
+
+  def o;
+  list A1 = list(1,2,o,o,5,o),list(3,4,o,o,5,o);
+  list A2 = list(o,2,3,3,o,o),list(o,2,3,4,o,o),list(o,4,5,0,o,o);
+  list A3 = list(o,o,o,o,5,0),list(o,o,o,o,5,1);
+  list A = A1,A2,A3;
+  candidateSet(A);
+}
+
+static proc compareSupports(intvec a, intvec b)
+/* compares the supports of a and b
+   -1: supp(a)<supp(b)
+   0:  supp(a)=supp(b)
+   1:  supp(a)>supp(b)
+   any other value: otherwise */
+{
+  int returnNeg = 1;
+  int returnPos = 1;
+  for (int i=1; i<=size(a); i++)
+  {
+    if (a[i]==0 && b[i]!=0)
+    {
+      returnPos = 0;
+    }
+    if (a[i]!=0 && b[i]==0)
+    {
+      returnNeg = 0;
+    }
+  }
+  if (returnPos+returnNeg == 0)
+  {
+    return (42);
+  }
+  return (returnPos-returnNeg);
+}
+
+static proc doMerge(list workingList, ideal stdI, number uniformizingParameter, string eStrat, int useModular)
+/* merges the fused entries of workingList using eliminantStrategy eStrat
+     and modular techniques if useModular==1 */
+{
+  def origin = basering;
+  int n = nvars(basering);
+
+  // scan through the working list and isolate all tropical projections to be done.
+  list args;
+  for (int i=1; i<=size(workingList); i++)
+  {
+    if (typeof(workingList[i][1])=="intvec")
+    {
+      intvec u = workingList[i][1];
+      if(sum(u) == -1)
+      {
+        // No unimodular transformation required.
+        // The candidate set is the correct set already.
+        // Read off the multiplicities from one of the original lists.
+        int l = 1;
+        for(; l <= n; l++)
+        {
+          if(u[l] != 0)
+          {
+            break;
+          }
+        }
+        list Ti = workingList[i][2];
+        list Mi;
+        int k = 1;  // the k-th of the original lists should have specified entries at position l
+        for(; k <= size(workingList[i][3]); k++)
+        {
+          if(typeof(workingList[i][3][k][1][1][l]) == "number")
+          {
+            break;
+          }
+        }
+        list refList = workingList[i][3][k];
+        for(int j = 1; j <= size(Ti); j++)
+        {
+          for(int jj = 1; jj <= size(refList[1]); jj++)
+          {
+            if(refList[1][jj][l] == Ti[j][l])
+            {
+              Mi[j] = refList[2][jj];
+              break;
+            }
+          }
+        }
+        workingList[i] = list(Ti,Mi);
+      }
+      else
+      {
+        list arg;
+        arg[1] = stdI;
+        arg[2] = workingList[i][1];
+        arg[3] = uniformizingParameter;
+        arg[4] = eStrat;
+        arg[5] = useModular;
+        args[size(args)+1] = arg;
+      }
+    }
+  }
+
+  // precompute all projections in parallel
+  if(size(args) > 0)
+  {
+    list outs = parallelWaitAll("tropicalProjection",args);
+  }
+
+  // enumerate through the working list and look for merges to be done
+  int ii=0;
+  for(int i = 1; i <= size(workingList); i++)
+  {
+    if(typeof(workingList[i][1]) == "intvec")
+    {
+      // compute tropical projection
+      ii++;
+      intvec u = workingList[i][1];
+      list WMproj = outs[ii][1];
+      list Wproj = WMproj[1]; // projected points
+      list Mproj = WMproj[2]; // projected multiplicities
+
+      dbprint("direction: "+string(u));
+      dbprint("points: "+string(Wproj));
+      dbprint("multiplicities: "+string(Mproj));
+
+      // go through the candidate set
+      // remove all candidates which do not match the projection
+      // and assign those which do the proper multiplicity
+      list candidateSet = workingList[i][2];
+      list candidateMultiplicities;
+      for (int j=1; j<=size(candidateSet); j++)
+      {
+        list candidate = candidateSet[j];
+
+        // compute projection of candidate
+        number candidateProjected = 0;
+        for (int k=1; k<=size(candidate); k++)
+        {
+          if (typeof(candidate[k])=="number")
+          {
+            candidateProjected = candidateProjected-candidate[k]*u[k];
+          }
+        }
+
+        // test whether candidateProjected occurs in Wproj
+        int k=1;
+        for (; k<=size(Wproj); k++)
+        {
+          if (candidateProjected==Wproj[k])
+          {
+            break;
+          }
+        }
+
+        // if it doesn't, remove the candidate
+        // if it does, assign the proper multiplicity of Mproj
+        if (k>size(Wproj))
+        {
+          dbprint(incompleteVectorPrettyPrint(candidate,2));
+          candidateSet = delete(candidateSet,j);
+          continue; // WARNING: does not increment j
+        }
+        else
+        {
+          dbprint(incompleteVectorPrettyPrint(candidate,2)+" <- "+string(Mproj[k]));
+          candidateMultiplicities[j] = Mproj[k];
+        }
+      }
+      // Sanity check: is the merged set compatible with the sets before merge
+
+      workingList[i] = list(candidateSet,candidateMultiplicities);
+    }
+  }
+  return (workingList);
+}
+
+proc fastExponentiation(poly base, int exponent, poly divisor)
+"USAGE:  fastExponentiation(poly base, int exponent, poly divisor);
+ASSUME:  exponent >= 0, base and divisor are univariate
+RETURN:  poly, the residue of base^exponent modulo divisor
+EXAMPLE: example fastExponentiation; shows an example
+"
+{
+  poly exponential = 1;
+  if(exponent mod 2 == 1)
+  {
+    exponential = base;
+  }
+  exponent = exponent div 2;
+  poly temp = base;
+  while(exponent > 0)
+  {
+    temp = reduce(temp^2,divisor);
+    int residue = exponent mod 2;
+    if(residue == 1)
+    {
+      exponential = reduce(exponential*temp,divisor);
+    }
+    exponent = exponent div 2;
+  }
+  return(exponential);
+}
+example
+{
+  "EXAMPLE:"; echo = 2;
+  ring r = 0,x,dp;
+  poly base = x9+x8+x7+x6+x5+x4+x3+x2+x+1;
+  int exponent = 1000;
+  poly divisor = x^10-1;
+  int tFast = timer;
+  poly expFast = fastExponentiation(base, exponent, divisor);
+  tFast = timer-tFast;
+
+  int tNormal = timer;
+  poly expNormal = reduce(base^exponent,divisor);
+  tNormal = timer-tNormal;
+
+  expFast == expNormal;
+  tFast;
+  tNormal;
+}
+
+static proc isSlimUnimodularTransformation(intvec u)
+"USAGE: isSlimUnimodularTransformation(intvec u);
+RETURN: 0, if u is not a vector specifying a slim unimodular transformation,
+        otherwise the index 0<ell<=nvars(basering)
+          at which the slim unimodular transformation is concentrated
+"
+{
+  if(size(u) != nvars(basering))
+  {
+    return(0);
+  }
+  int ell = 0;
+  for(int i = 1; i <= size(u); i++)
+  {
+    if(u[i] < 0)
+    {
+      if(ell > 0 || u[i] != -1)
+      {
+        return(0);
+      }
+      ell = i;
+    }
+  }
+  return(ell);
+}
+
+static proc lexSmallestVariableIndex(poly g)
+/* returns the index of the lex smallest variable occuring in g */
+{
+  intvec alpha = leadexp(g);
+  for (int i=1; i<=nvars(basering); i++)
+  {
+    if (alpha[i]>0)
+    {
+      return (i);
+    }
+  }
+  return (-1);
+}
+
+proc newtonPolygonNegSlopesWithMult(poly g, number uniformizingParameter)
+"USAGE:   newtonPolygonNegSlopesWithMult(poly g, number uniformizingParameter);
+RETURN:  list, the negative slopes of the Newton Polygon of g in ascending order
+ASSUME:  g univariate and at least binomial
+EXAMPLE: example newtonPolygonNegSlopesWithMult; shows an example
+"
+{
+  // 1. write g as a polynomial in the lex. smallest variable occuring in it
+  int n = lexSmallestVariableIndex(g);
+  matrix G = coef(g,var(n));
+
+  // 2. create the matrix of vertices of the Newton polygon
+  int k = ncols(G);
+  intmat M[k+1][3];
+  for (int i=1; i<=k; i++)
+  {
+    // (1, deg, val of coef)
+    M[i,1] = 1;
+    M[i,2] = deg(G[1,i]);
+    M[i,3] = valuation(number(G[2,i]),uniformizingParameter);
+  }
+  M[k+1,1] = 0;
+  M[k+1,2] = 0;
+  M[k+1,3] = 1;
+
+  // 3. construct the Newton polygon and compute its facets and vertices
+  cone Delta = coneViaPoints(M);
+  bigintmat F = facets(Delta);
+  bigintmat R = rays(Delta);
+
+  // 4. return the slopes and multiplicities
+  list slopes;
+  list multiplicities;
+  number slope;
+  bigintmat eq[1][3];
+  cone edge;
+  bigintmat edgeVertices;
+  for (int i=nrows(F); i>0; i--)
+  {
+    if (F[i,3]!=0) // if slope is finite
+    {
+      slopes[size(slopes)+1] = number(F[i,2])/number(F[i,3]);
+
+      eq[1,1..3] = F[i,1..3];
+      edge = coneViaInequalities(F,eq);
+      edgeVertices = rays(edge);
+      multiplicities[size(multiplicities)+1] = absValue(int(edgeVertices[1,2]) - int(edgeVertices[2,2]));
+    }
+  }
+
+  // 5. sort slopes in ascending order and multiplities accordingly
+  list sorting = sort(slopes);
+  list slopesSorted = sorting[1];
+  intvec permSorted = sorting[2];
+  list multiplicitiesSorted;
+  for (int i=1; i<=size(slopesSorted); i++)
+  {
+    multiplicitiesSorted[i] = multiplicities[permSorted[i]];
+  }
+
+  return (list(slopesSorted,multiplicitiesSorted));
+}
+example
+{ "EXAMPLE:"; echo = 2;
+  ring r = (0,t),x,dp;
+  poly g = tx2+x+1;
+  newtonPolygonNegSlopesWithMult(g,t);
+  // poor man's polynomials over p-adic numbers:
+  ring s = 0,x,dp;
+  poly g = x2+9x+1;
+  newtonPolygonNegSlopesWithMult(g,number(3));
+}
+
+static proc pickMerge(list workingList, list mStrat)
+/* fuses elements in workingList that are to be merged
+   according to mStrat */
+{
+  if (typeof(mStrat[1])=="string")
+  {
+    if (mStrat[1] == "bestProjection")
+    {
+      // merges entries which require the smallest projections
+      int numberOfMerges = getcores();
+      if(size(#) > 0)
+      {
+        numberOfMerges = #[1];
+      }
+
+      // Step 1: scan all entries for their support
+      int workingListSize = size(workingList);
+      int n = nvars(basering);
+      list workingListSupports;
+      for (int i=1; i<=workingListSize; i++)
+      {
+        list w = workingList[i][1][1];
+        intvec workingListSupport;
+        for (int j=1; j<=n; j++)
+        {
+          if (typeof(w[j])=="number")
+          {
+            workingListSupport[j] = 1;
+          }
+          else
+          {
+            workingListSupport[j] = 0;
+          }
+        }
+        workingListSupports[i] = workingListSupport;
+      }
+
+      // Step 2: iterate over all pairs of workingList entries and
+      //  create the union of their supports;
+      list unifiedSupports;
+      int unifiedSupportsSize = 0;
+      for (int i=1; i<workingListSize; i++)
+      {
+        for (int j=i+1; j<=workingListSize; j++)
+        {
+          intvec unifiedSupport = workingListSupports[i]+workingListSupports[j];
+
+          for (int k=1; k<=unifiedSupportsSize; k++)
+          {
+            int b = compareSupports(unifiedSupports[k],unifiedSupport);
+            if (b==0 || b==1)
+            { // unifiedSupports[k] >= unifiedSupport component-wise
+              break;
+            }
+            if (b==-1)
+            { // unifiedSupports[k] <= unifiedSupport component-wise and
+              // unifiedSupports[k] != unifiedSupport
+              unifiedSupportsSize--;
+              unifiedSupports = delete(unifiedSupports,k);
+              continue; // WARNING: does not increment k!!!
+            }
+          }
+          if (k>unifiedSupportsSize)
+          {
+            unifiedSupportsSize++;
+            unifiedSupports[unifiedSupportsSize] = unifiedSupport;
+          }
+        }
+      }
+
+      numberOfMerges = min(numberOfMerges,size(unifiedSupports));
+
+      // Step 3: create list of all workingList entries
+      //   contained in each unified support
+      list possibleMergesPointsOnly;
+      list possibleMerges;
+      list possibleMergesIndices;
+      for (int i=1; i<=unifiedSupportsSize; i++)
+      {
+        list possibleMergePointsOnly;
+        list possibleMerge;
+        intvec possibleMergeIndices;
+        for (int j=1; j<=workingListSize; j++)
+        {
+          int b = compareSupports(workingListSupports[j],unifiedSupports[i]);
+          if (b==-1)
+          {
+            possibleMergePointsOnly[size(possibleMergePointsOnly)+1] = workingList[j][1];
+            possibleMerge[size(possibleMerge)+1] = workingList[j];
+            possibleMergeIndices[j] = 1;
+          }
+          if (b==0 || b==1)
+          {
+            ERROR("workingList has invalid or redundant entries");
+          }
+        }
+        possibleMergesPointsOnly[i] = possibleMergePointsOnly;
+        possibleMerges[i] = possibleMerge;
+        possibleMergesIndices[i] = possibleMergeIndices;
+      }
+
+      // Step 4: iterate through all possible merges and compute the smallest projections
+      list candidateSets;
+      list projections;
+      intvec projectionNorms;
+      for (int i=1; i<=size(possibleMerges); i++)
+      {
+        candidateSets[i] = candidateSet(possibleMergesPointsOnly[i]);
+        projections[i] = smallestFeasibleProjection(candidateSets[i]);
+        projectionNorms[i] = sum(projections[i]);
+      }
+
+      // Step 5: isolate the numberOfMerges smallest projections
+      //   and add them to the new working list
+      //   construct the union of all their support
+      intvec sortedProjectionIndices = sort(projectionNorms)[2];
+      list newWorkingList;
+      intvec coveredSupport;
+      coveredSupport[size(workingList)] = 0;
+      for (int i=1; i<=numberOfMerges; i++)
+      {
+        list newWorkingListEntry;
+        int ii = sortedProjectionIndices[i];
+        newWorkingListEntry[1] = projections[ii];
+        newWorkingListEntry[2] = candidateSets[ii];
+        newWorkingListEntry[3] = possibleMerges[ii];
+        newWorkingList[i] = newWorkingListEntry;
+        coveredSupport = coveredSupport+possibleMergesIndices[ii];
+      }
+
+      // Step 6: add old working list entries with unaccounted supports
+      //   to new working list
+      for (int i=1; i<=size(workingList); i++)
+      {
+        if (coveredSupport[i]==0)
+        {
+          newWorkingList[size(newWorkingList)+1] = workingList[i];
+        }
+      }
+      return (newWorkingList);
+    }
+
+    ERROR("pickMerge: no valid merging strategy specified.");
+  }
+
+  list newWorkingList;
+  for(int i=1; i<=size(mStrat); i++)
+  {
+    list merge = mStrat[i];
+    list mergedEntry;
+    if(size(merge) > 1)
+    {
+      list WMs;
+      list Ws;
+      for(int j = 1; j <= size(merge); j++)
+      {
+        list WMj = workingList[merge[j]];
+        WMs[size(WMs)+1] = WMj;
+        Ws[size(Ws)+1] = WMj[1];
+      }
+      list cs = candidateSet(Ws);
+      intvec u = smallestFeasibleProjection(cs);
+      mergedEntry = list(u,cs,WMs);
+    }
+    else
+    {
+      mergedEntry = workingList[merge[1]];
+    }
+    newWorkingList[size(newWorkingList)+1] = mergedEntry;
+  }
+
+  // mStrat = delete(mStrat,1); // why won't this work??
+  return(newWorkingList);
+}
+
+static proc pointsOfNormOfLength(int norm, int length)
+/* returns all points of a given l1 norm of a given length */
+{
+  if(length == 1)
+  {
+    return(list(intvec(norm)));
+  }
+  if(norm == 0)
+  {
+    intvec zeroVector;
+    zeroVector[length] = 0;
+    return(list(zeroVector));
+  }
+  list points;
+  for(int i = 0; i <= norm; i++)
+  {
+    list L = pointsOfNormOfLength(norm-i,length-1);
+    for(int j = 1; j <= size(L); j++)
+    {
+      L[j] = intvec(i,L[j]);
+    }
+    points = points+L;
+  }
+  return(points);
+}
+example
+{
+  echo = 2;
+  pointsOfNormOfLength(3,4);
+}
+
+static proc smallestFeasibleProjection(list P)
+"USAGE:  smallestFeasibleProjection(list P);
+ASSUME:  P list of incomplete vectors of rational numbers
+RETURN:  intvec u, an in l1-norm minimal u which is injective on P
+EXAMPLE: smallestFeasibleProjection; shows an example
+"
+{
+  intvec support;
+  int kSupp = 1;
+  for(int i = 1; i <= size(P[1]); i++)
+  {
+    if(typeof(P[1][i]) != "none")
+    {
+      support[kSupp] = i;
+      kSupp++;
+    }
+  }
+
+  list T;
+  for(int i = 1; i <= size(P); i++)
+  {
+    list Pi = P[i];
+    matrix Ti[1][size(support)] = Pi[support];
+    T[i] = Ti;
+  }
+
+  int l1Norm = 0;
+  while(1)
+  {
+    list U = sortBySupport(pointsOfNormOfLength(l1Norm,size(support)-1));
+
+    for(int i = 1; i <= size(support); i++)
+    {
+      if (support[i]==nvars(basering))
+      {
+        break;
+      }
+      for(int j = 1; j <= size(U); j++)
+      {
+        intvec u;
+        intvec Uj = U[j];
+        if(i > 1)
+        {
+          u = Uj[1..i-1];
+        }
+        u[i] = -1;
+        if(i < size(support))
+        {
+          u = u,Uj[i..size(support)-1];
+        }
+        //test injectivity:
+        if(testInjectivity(T,u))
+        {
+          //found injective map!
+          intvec uResult;
+          uResult[nvars(basering)] = 0;
+          uResult[support] = u;
+          return(uResult);
+        }
+      }
+    }
+    l1Norm++;
+  }
+}
+example
+{
+  echo = 2;
+  ring r = 0,(x,y),dp;
+  list P = list(0,0),list(0,1),list(0,2),list(1,0),list(1,1),list(1,2);
+  smallestFeasibleProjection(P);
+}
+
+static proc sortBySupport(list P)
+/* sorts points by their support */
+{
+  list Pgrouped;
+  for(int i = 1; i <= size(P[1])+1; i++)
+  {
+    Pgrouped[i] = list();
+  }
+  for(int i = 1; i <= size(P); i++)
+  {
+    int nzeroes = 1;
+    for(int j = 1; j <= size(P[i]); j++)
+    {
+      if(P[i][j] == 0)
+      {
+        nzeroes++;
+      }
+    }
+    Pgrouped[nzeroes] = Pgrouped[nzeroes]+list(P[i]);
+  }
+  list Psorted;
+  for(int i = size(P[1])+1; i >= 1; i--)
+  {
+    Psorted = Psorted+Pgrouped[i];
+  }
+  return(Psorted);
+}
+
+static proc testInjectivity(list cs, intvec u)
+/* tests whether w |-> u*w is injective on cs */
+{
+  list csImages;
+  for(int k = 1; k <= size(cs); k++)
+  {
+    matrix csImage = cs[k]*u;
+    for(int i = 1; i <= size(csImages); i++)
+    {
+      if(csImages[i] == csImage)
+      {
+        return(0);
+      }
+    }
+    csImages[size(csImages)+1] = csImage;
+  }
+  return(1);
+}
+
+proc unitVector(int n, int ell)
+/* returns e_ell in R^n */
+{
+  intvec u;
+  u[n] = 0;
+  u[ell] = 1;
+  return (u);
+}
+
+static proc isInShapeForm(ideal stdI)
+/* returns 1 if stdI is in shape form; 0 otherwise */
+{
+  poly g = stdI[1];
+  int d = deg(g);
+  int n = nvars(basering);
+  if (size(stdI)!=n || leadmonom(g)!=var(n)^d)
+  {
+    return (0);
+  }
+  else
+  {
+    for(int i=2; i<=n; i++)
+    {
+      g = stdI[i];
+      if (leadmonom(g)!=var(n-i+1) || size(g)<=1)
+      {
+        return (0);
+      }
+      if (reduce(var(n)^(d-1),leadmonom(g[2]))!=0)
+      {
+        return (0);
+      }
+    }
+  }
+  return (1);
+}
+
+proc tropicalProjection(ideal stdI, intvec u, number uniformizingParameter, list #)
+"USAGE:  tropicalProjection(ideal stdI, intvec u, number uniformizingParameter[, string eStrat, int useModular])
+ASSUME:  stdI is a zero-dimensional ideal whose given genreators form a GB
+         if current ordering is lp, assume that stdI is in shape form
+         if current ordering is not lp, assume that stdI is in shape form
+           with respect to a lexicographical ordering (returns error otherwise)
+NOTE:    for list of viable eStrat, see binaryEliminant
+RETURN:  list(list(W,M),g), where
+           matrix W = image of Trop(stdI) under w |-> u*w
+           intvec M = multiplicities of the
+           poly g = eliminant of transformed stdI
+EXAMPLE: tropicalProjection, shows an example
+"
+{
+  // 0.1 cache current ring
+  def rOrigin = basering;
+
+  // 0.2 parse optional parameters
+  string eStrat = "minpoly";
+  if (size(#)>0 && typeof(#[1])=="string")
+  {
+    eStrat = #[1];
+  }
+  int useModular = 0;
+  if (size(#)>1 && typeof(#[2])=="int")
+  {
+    useModular = #[2];
+  }
+
+  // 0.3 sanity check optional parameters
+  if (useModular==1 && char(basering)>0)
+  {
+    ERROR("tropicalProjection: positive characteristic incompatible with modular approach");
+  }
+  int ell = isSlimUnimodularTransformation(u);
+  if (ell==0)
+  {
+    ERROR("tropicalProjection: input projection direction invalid");
+  }
+  if (attrib(stdI,"isSB")==0)
+  {
+    ERROR("tropicalProjection: input ideal not a reduced Groebner Basis");
+  }
+  intvec optionsOld = option(get);
+  option(redSB);
+  intvec optionsNew = option(get);
+  if (optionsOld!=optionsNew)
+  {
+    ERROR("tropicalProjection: option redSB not enabled");
+  }
+
+  /**
+   * CASE A: eStrat = "fglm" and u = -e_\ell
+   *  (does not require shape position)
+   */
+  int n = nvars(basering);
+  if (u==-unitVector(n,ell) && eStrat=="fglm")
+  {
+    string newVars;
+    for(int j=ell+1; j<=n; j++)
+    {
+      newVars = newVars+varstr(j)+",";
+    }
+    for(int j=1; j<ell; j++)
+    {
+      newVars = newVars+varstr(j)+",";
+    }
+
+    execute("ring rTropicalProjection = ("+charstr(rOrigin)+"),("+newVars+varstr(ell)+"),lp;");
+    number uniformizingParameter = fetch(rOrigin,uniformizingParameter);
+    ideal stdI = fglm(rOrigin,stdI);
+
+    setring rOrigin;
+    ideal stdI = imap(rTropicalProjection,stdI);
+    poly eliminant = stdI[1];
+    list TM = newtonPolygonNegSlopesWithMult(eliminant,uniformizingParameter);
+    return (list(TM,stdI));
+  }
+
+  /**
+   * CASE B: otherwise (does require shape position)
+   */
+  if (!isInShapeForm(stdI))
+  {
+    ERROR("tropicalProjection: input ideal not in shape form");
+  }
+
+  // 1.0 normalize stdI and read off f(n), ..., f(1)
+  stdI = simplify(stdI,1);
+  poly f(n) = stdI[1];
+  for (int i=n-1; i>0; i--)
+  {
+    poly f(i) = var(i)-stdI[n-i+1];
+  }
+
+  // 1.1 apply transformation
+  ring rShort = 0,var(n),dp;
+  poly f(n) = imap(rOrigin,f(n));
+  poly g = fastExponentiation(var(1),u[n],f(n));
+  for (int i=n-1; i>0; i--)
+  {
+    if (i != ell)
+    {
+      g = g*fastExponentiation(imap(rOrigin,f(i)),u[i],f(n));
+      g = reduce(g,f(n));
+    }
+  }
+
+  // 2. construct bivariate polynomial ring
+  setring rOrigin;
+  ring rBivariate = 0,(var(n),var(ell)),dp;
+  poly f = imap(rOrigin,f(n));
+  poly g = imap(rShort,g);
+  poly h = imap(rOrigin,f(ell));
+  ideal IBivar;
+  int reverse = 0;
+  if (sum(u)==-1)
+  { // Case 1: u = negative unit vector, invert g==1
+    IBivar = cleardenom(f),cleardenom(g*var(2)-h);
+  }
+  else
+  { // Case 2: u general, invert h
+    IBivar = cleardenom(f),cleardenom(h*var(2)-g);
+    reverse = 1;
+  }
+
+  // 3. compute eliminant
+  poly eliminant;
+  poly eliminantRev = binaryEliminant(IBivar,eStrat,useModular); // todo: disable parallelization in modular
+  if (reverse==1)
+  {
+    int d = deg(eliminantRev);
+    for(int i=1; i<=size(eliminantRev); i++)
+    {
+      eliminant = eliminant + leadcoef(eliminantRev[i])*var(2)^(d-deg(eliminantRev[i]));
+    }
+  }
+  else
+  {
+    eliminant = eliminantRev;
+  }
+
+  setring rOrigin;
+  poly eliminant = imap(rBivariate,eliminant);
+  list TM = newtonPolygonNegSlopesWithMult(eliminant,uniformizingParameter);
+  return (list(TM,ideal(eliminant)));
+}
+example
+{
+  "EXAMPLE:"; echo = 2;
+  ring r = 0,(x,y,z,w),lp;
+  number uniformizingParameter = 2;
+  ideal I =
+    (x-1)*(x-2)*(x-4)*(x-6)*(x-8),
+    y-2x,
+    z-2y,
+    w-2z;
+  ideal stdI = std(I);
+  tropicalProjection(stdI,-unitVector(4,1),uniformizingParameter,"minpoly",1);
+  tropicalProjection(stdI,-unitVector(4,2),uniformizingParameter,"fglm",1);
+  tropicalProjection(stdI,-unitVector(4,3),uniformizingParameter,"resultant",1);
+}
+
+proc mergeStrat(string strat, list #)
+/* returns an mergeStrat list according to the mergeStrat name specified */
+{
+  if (strat == "oneProjection")
+  {
+    // merge everything at once:
+    //   L[1] = ((1,2,..,n))
+    list L;
+    list l;
+    for (int i=1; i<=nvars(basering); i++)
+    {
+      l[i] = i;
+    }
+    L[1] = list(l);
+    return (L);
+  }
+  if (strat == "sequential")
+  {
+    // merge everything sequentially
+    //   L[1] = ((1,2),(3),...,(n))
+    //   L[2] = ((1,2),(3),...,(n-1))
+    //            here 1 represents the previously merged 1,2
+    //   ...      and 2 represents the original 3, etc.
+    //   L[n-1] = ((1,2))
+    int n = nvars(basering);
+    list L;
+    for (int i=1; i<n; i++)
+    {
+      list l;
+      l[1] = list(1,2);
+      for (int j=3; j<=n-i+1; j++)
+      {
+        l[j-1] = list(j);
+      }
+      L[i] = l;
+    }
+    return (L);
+  }
+  if (strat == "regularTree")
+  {
+    if (size(#)==0)
+    {
+      ERROR("mergeStrat: regularTree strategy requires degree as additional input");
+    }
+    if (#[1]<=1)
+    {
+      ERROR("mergeStrat: regularTree strategy requires degree greater 1");
+    }
+    int n = nvars(basering);
+    int k = #[1];
+
+    // merge in (disjoint) groups of k
+    //   L[1] = ((1..k-1),(k..2k-1),...)
+    //   ...
+    list L;
+    while (n>1)
+    {
+      list l;
+      for (int nLoad = 0; nLoad*k<=n; k++)
+      {
+        list ll;
+        for (int j=1; j<=k && nLoad*k+j<=n; j++)
+        {
+          ll[j+1] = nload*k+j;
+        }
+        l[size(l)+1] = ll;
+      }
+      L[size(L)+1] = l;
+      n = size(l);
+    }
+    return (L);
+  }
+
+  if (strat == "overlap")
+  {
+    int n = nvars(basering);
+
+    list L;
+    for (int i=n; i>1; i--)
+    {
+      list l;
+      for (int j=2; j<=i; j++)
+      {
+        l[size(l)+1] = list(1,j);
+      }
+      L[size(L)+1] = l;
+    }
+    return (L);
+  }
+  ERROR("mergeStrat: invalid strategy string for merging");
+}
+
+
+proc tropicalVarietyViaProjection(ideal stdI, number uniformizingParameter, list #)
+"USAGE:   tropicalVarietyViaProjection(ideal stdI, number uniformizingParameter[, list mergeStrat, string eliminantStrat, int useModular, int useParallel]);
+ASSUME:  stdI reduced Groebner basis (in current ordering), assumed to be of shape form in lp ordering
+NOTE:    for a list of viable eliminantStrat, see binaryEliminant
+RETURN:  list, the zero-dimensional tropical variety of stdI
+EXAMPLE: tropicalVarietyViaProjection; shows an example
+"
+{
+  // 0. parse optional parameter and test for sanity
+  intvec optionsOld = option(get);
+  option(redSB);
+  intvec optionsNew = option(get);
+  if (optionsOld!=optionsNew)
+  {
+    ERROR("tropicalVarietyViaProjection: option redSB not enabled");
+  }
+  if (!attrib(stdI,"isSB"))
+  {
+    ERROR("tropicalVarietyViaProjection: input no Groebner basis");
+  }
+  list mStrat = mergeStrat("overlap");
+  if(size(#) > 0)
+  {
+    mStrat = #[1];
+  }
+  string eStrat = "minpoly";
+  if (size(#)>1)
+  {
+    eStrat = #[2];
+  }
+  int useModular = (char(basering)==0);
+  if (size(#)>2)
+  {
+    useModular = #[3];
+  }
+  int useParallel = 0;
+  if (size(#)>3)
+  {
+    useParallel = #[4];
+  }
+  if (useModular==1 && char(basering)>0)
+  {
+    ERROR("tropicalVarietyViaProjection: positive characteristic incompatible with modular approach");
+  }
+
+  dbprint("Computing principal projections onto coordinates.");
+  int n = nvars(basering);
+  def rOrigin = basering;
+  intvec ordVars = 1..n;
+  if(ordstr(basering)[1,2] == "lp")
+  {
+    // test whether stdI is in shape form and if yes use eStrat to compute all other coordinate projections
+    def rLex = basering;
+    if(!isInShapeForm(stdI))
+    {
+      dbprint("input not in shape position with respect to last variable");
+      setring rOrigin;
+      matrix M[1][n];
+      intvec u;
+      return(list(M,u));
+    }
+
+    list args;
+    for(int i=1; i<n; i++)
+    {
+      ideal IBvar = stdI[n-i+1],stdI[1];
+      args[i] = list(IBvar,eStrat,useModular);
+    }
+    list out = parallelWaitAll("binaryEliminant",args);
+
+    list WM;
+    WM[n] = newtonPolygonNegSlopesWithMult(stdI[1],uniformizingParameter);
+    for(int i=1; i<n; i++)
+    {
+      WM[i] = newtonPolygonNegSlopesWithMult(out[i],uniformizingParameter);
+    }
+  }
+  else
+  {
+    // compute all coordinate projections using fglm and test whether result is in shape form
+    list args;
+    for (int i=1; i<=n; i++)
+    {
+      args[i] = list(stdI,-unitVector(n,i),uniformizingParameter,"fglm",useModular);
+    }
+    list out = parallelWaitAll("tropicalProjection",args);
+
+    // read off all tropical projections
+    list WM;
+    for (int i=1; i<=size(out); i++)
+    {
+      WM[i] = out[i][1];
+    }
+
+    // cycle through all lexicographical Groebner bases and search for the ideal in shape position
+    for (int ell=n; ell>0; ell--)
+    {
+      setring rOrigin;
+      stdI = out[ell][2];
+
+      string newVars;
+      for(int j=ell+1; j<=n; j++)
+      {
+        newVars = newVars+varstr(j)+",";
+        ordVars[j-ell] = j;
+      }
+      for(int j=1; j<ell; j++)
+      {
+        newVars = newVars+varstr(j)+",";
+        ordVars[n-ell+j] = j;
+      }
+
+      execute("ring rLex = ("+charstr(rOrigin)+"),("+newVars+varstr(ell)+"),lp;");
+      ordVars[n] = ell;
+      number uniformizingParameter = fetch(rOrigin,uniformizingParameter);
+      ideal stdI = imap(rOrigin,stdI);
+      attrib(stdI,"isSB",1);
+
+      if (isInShapeForm(stdI))
+      {
+        // if found, transfer all projections into this lexicographical ring
+        // and break with the current ring active
+        list WM = fetch(rOrigin,WM);
+        break;
+      }
+    }
+    if (ell==0)
+    {
+      ERROR("tropicalVarietyViaProjection: ideal not in shape position with respect to any lex ordering");
+    }
+  }
+
+
+
+  // the workingList can be in two states:
+  // STATE 1: before calling pickMerge
+  //   each entry is a tuple (list T, list M), where
+  //     T = incomplete rational vectors
+  //         describing the projetion of Trop(I)
+  //         onto their common support
+  //     M = list of multiplicities
+
+  // STATE 2: after calling pickMerge,
+  //          before calling doMerge
+  //   same as before, except some entries are
+  //   of the form (intvec,list), where
+  //     intvec = projection to be made
+  //     list = corresponding candidate set
+
+  // INITIALIZATION: STATE 1 with
+  //   i-th entry = projection onto i-th coordinate
+  list workingList;
+  for (int i=1; i<=n; i++)
+  {
+    list Lambda;
+    for(int j = 1; j <= size(WM[i][1]); j++)
+    {
+      list lambda;
+      lambda[i] = WM[i][1][j];
+      Lambda[j] = lambda;
+    }
+    workingList[i] = list(Lambda,WM[i][2]);
+  }
+
+  // END: STATE 1 with size(workingList)==1
+  int tPickTotal = 0;
+  int tMergeTotal = 0;
+  int iterCount = 0;
+  while(size(workingList) > 1)
+  {
+    iterCount++;
+    int tPick = rtimer;
+    dbprint("===============before pickMerge====================");
+    dbprint(workingListPrettyPrint(workingList));
+
+    workingList = pickMerge(workingList,mStrat[iterCount]);
+    tPick = rtimer - tPick;
+    tPickTotal = tPickTotal + tPick;
+
+    dbprint("===============after pickMerge====================");
+    int tMerge = rtimer;
+    dbprint(workingListPrettyPrint(workingList));
+    workingList = doMerge(workingList,stdI,uniformizingParameter,eStrat,useModular);
+    tMerge = rtimer - tMerge;
+    tMergeTotal = tMergeTotal + tMerge;
+  }
+  dbprint("total time of pickMerge: "+string(tPickTotal));
+  dbprint("total time of doMerge: "+string(tMergeTotal));
+
+  ring lexRing = basering;
+  setring rOrigin;
+  list TropI = imap(lexRing,workingList)[1];
+  matrix W[size(TropI[1])][nvars(basering)];
+  intvec multiplicities;
+  for(int i = 1; i <= nrows(W); i++)
+  {
+    list w = TropI[1][i];
+    for (int j = 1; j <= ncols(W); j++)
+    {
+      W[i,ordVars[j]] = w[j];
+    }
+    multiplicities[i] = TropI[2][i];
+  }
+  TropI[1] = W;
+  TropI[2] = multiplicities;
+
+  return(TropI);
+}
+example
+{
+  "EXAMPLE:"; echo = 2;
+  ring r = 0,(x,y,z,w),dp;
+  number uniformizingParameter = 2;
+  ideal I =
+    (x-1)*(x-2)*(x-4)*(x-6)*(x-8),
+    y-2x,
+    z-2y,
+    w-2z;
+  ideal stdI = std(I);
+  list TropI = tropicalVarietyViaProjection(stdI,uniformizingParameter,mergeStrat("sequential"),"minpoly",0,0);
+  print(TropI[1]);
+  print(TropI[2]);
+}
+
+proc valuation(number c, number uniformizingParameter)
+"USAGE:   valuation(number c, number uniformizingParameter);
+RETURN:  int, the valuation of c in the ground field
+ASSUME:  c!=0
+EXAMPLE: example valuation; shows an example
+"
+{
+  int vc = 0;
+  if (pardeg(uniformizingParameter)>0)
+  { // unmixed characteristics case
+    def origin = basering;
+    number c_denom = denominator(c);
+    number c_num = numerator(c);
+    execute("ring r_Val="+string(char(origin))+","+string(uniformizingParameter)+",ds");
+    poly c_denom = imap(origin,c_denom);
+    poly c_num = imap(origin,c_num);
+    vc = ord(c_num)-ord(c_denom);
+    setring origin;
+  }
+  else
+  { // mixed characteristic case
+    bigint c_denom = bigint(denominator(c));
+    bigint c_num = bigint(numerator(c));
+    bigint p = bigint(uniformizingParameter);
+
+    while (c_num mod p==0)
+    {
+      c_num = c_num div p;
+      vc++;
+    }
+    while (c_denom mod p==0)
+    {
+      c_denom = c_denom div p;
+      vc--;
+    }
+  }
+  return (vc);
+  ERROR("val: invalid input");
+}
+example
+{ "EXAMPLE:"; echo = 2;
+  // poor man's polynomials over Puiseux series:
+  ring r = (0,t),x,dp;
+  valuation(t2+t3,t);
+  valuation(t^-2+t^-3,t);
+  // poor man's polynomials over p-adic numbers:
+  ring s = 0,x,dp;
+  valuation(12,number(2));
+  valuation(1/12,number(2));
+}
+
+
+
+
+
+
+
+
+
+
+//=========================================================================
+//=========================================================================
+//                           print functions
+//=========================================================================
+//=========================================================================
+static proc workingListPrettyPrint(alias list workingList)
+{
+  string printString;
+  for (int i=1; i<=size(workingList); i++)
+  {
+    if (typeof(workingList[i][1])=="intvec")
+    {
+      "workingList entry",i;
+      mergeEntryPrettyPrint(workingList[i],2);
+    }
+    else
+    {
+      "workingList entry",i;
+      holdEntryPrettyPrint(workingList[i],2);
+    }
+  }
+}
+
+static proc mergeEntryPrettyPrint(list mergeEntry, int indent)
+{
+  string indentString;
+  for (int i=1; i<=indent; i++)
+  {
+    indentString = indentString+" ";
+  }
+  string printString = indentString+"u:  "+string(mergeEntry[1])+newline;
+  printString = printString+indentString+"cs: "+newline;
+  printString = printString+listOfIncompleteVectorsPrettyPrint(mergeEntry[2],indent+4);
+  return (printString);
+}
+
+static proc holdEntryPrettyPrint(list holdEntry, int indent)
+{
+  string indentString;
+  for (int i=1; i<=indent; i++)
+  {
+    indentString = indentString+" ";
+  }
+  string printString = indentString+"W: "+newline;
+  printString = printString+listOfIncompleteVectorsPrettyPrint(holdEntry[1],indent+4)+newline;
+  printString = printString+indentString+"M: "+string(holdEntry[2]);
+  return (printString);
+}
+
+static proc listOfIncompleteVectorsPrettyPrint(list W, int indent)
+{
+  string printString;
+  for (int i=1; i<=size(W); i++)
+  {
+    printString = printString+incompleteVectorPrettyPrint(W[i],indent)+newline;
+  }
+  return (printString);
+}
+
+static proc incompleteVectorPrettyPrint(list w, int indent)
+{
+  string printString;
+  for (int i=1; i<=indent; i++)
+  {
+    printString = printString+" ";
+  }
+  for (int j=1; j<=nvars(basering); j++)
+  {
+    if (typeof(w[j])!="none")
+    {
+      printString = printString+string(w[j])+",";
+    }
+    else
+    {
+      printString = printString+"*,";
+    }
+  }
+  return (printString);
+}
+
+
+
+
+
+//========================================================================
+//========================================================================
+//                 binary eliminant library
+//========================================================================
+//========================================================================
+proc binaryEliminant(ideal IBvar, string strategy, int useModular)
+"USAGE:  binaryEliminant(ideal I, string strategy, int useModular);
+ASSUME:  I zero-dimensional saturated ideal in a bivariate polynomial ring K[x,y],
+         of the form
+           I = (f(x), h(x)*y-g(x)).
+         (f and h have rather small coefficients, g very large coefficients)
+NOTE:    available strategies
+           minpoly,   using minimal polynomial computation
+           fglm,      using fglm
+           resultant, using resultant computation
+           groebner,   using groebner basis computation
+RETURN:  poly, the eliminant generating the ideal I \cap K[y].
+EXAMPLE: binaryEliminant, shows an example
+"
+{
+  intvec optionsOld = option(get);
+  option(redSB);
+  intvec optionsNew = option(get);
+  if (optionsOld!=optionsNew)
+  {
+    ERROR("binaryEliminant: option redSB not enabled");
+  }
+
+  string cmd = "";
+  if (strategy=="minpoly")
+  {
+    cmd = "binaryEliminantMinpoly";
+  }
+  if (strategy=="fglm")
+  {
+    cmd = "binaryEliminantFGLM";
+  }
+  if (strategy=="dpthenfglm")
+  {
+    cmd = "binaryEliminantDPthenFGLM";
+  }
+  if (strategy=="resultant")
+  {
+    cmd = "binaryEliminantResultant";
+  }
+  if (strategy=="groebner")
+  {
+    cmd = "binaryEliminantGroebner";
+  }
+  if (cmd=="")
+  {
+    ERROR("binaryEliminant: invalid strategy");
+  }
+
+  ideal J;
+  if (useModular==0)
+  {
+    execute("J = "+cmd+"(IBvar);");
+  }
+  else
+  {
+    for (int i=1; i<=size(IBvar); i++)
+    {
+      IBvar[i] = cleardenom(IBvar[i]);
+    }
+    J = modular(cmd, list(IBvar), primeTest_BE, deleteUnluckyPrimes_BE, pTest_BE, 536870909);
+    // todo: why wont this work if no upper prime bound?
+  }
+  return (cleardenom(J[1]));
+}
+example
+{ echo = 2;
+  ring r = 0,(x,y),dp;
+  ideal IBvar = x5+x+1,(x3+2x-4)*y-x2;
+
+  binaryEliminant(IBvar,"minpoly",1);
+  binaryEliminant(IBvar,"fglm",1);
+  binaryEliminant(IBvar,"dpthenfglm",1);
+  binaryEliminant(IBvar,"resultant",1);
+  binaryEliminant(IBvar,"groebner",1);
+}
+
+proc binaryEliminantMinpoly(ideal I) // assumption: I = (f(x), h(x)*y-g(x)).
+{
+  // 0. cache basering and read off f, g and h
+  ring rOrigin = basering;
+  poly f = I[1];
+  poly h = I[2] div var(2);
+  poly g = h*var(2)-I[2];
+
+  // 1. compute first d+1 powers of g and h, starting from g^0 = h^0 = 1:
+  int d = deg(f);
+  ideal gPows = 1;  // gPows[i] = g^(i-1) mod f
+  ideal hPows = 1;  // hPows[i] = h^(i-1) mod f
+  for(int i = 1; i <= d; i++)
+  {
+    gPows = gPows,reduce(g*gPows[i],f);
+    hPows = hPows,reduce(h*hPows[i],f);
+  }
+
+  // 2. put together the products g^i*h^j mod f for i+j = d
+  ideal ghProds = hPows[d+1];  //ghProds[i] = g^(i-1)*h^(d-i+1)
+  for(int i = 2; i <= d+1; i++)
+  {
+    ghProds = ghProds,reduce(gPows[i]*hPows[d-i+2],f);
+  }
+  matrix M = coeffs(ghProds,var(1));
+
+  // 3. compute a vector in the kernel of M with minimal support
+  ring rLinAlg = char(rOrigin),(a(1..d+1)),lp;
+  matrix aVec[d+1][1];
+  for(int i = 1; i <= d+1; i++)
+  {
+    aVec[i,1]= a(i);
+  }
+  matrix M = imap(rOrigin,M);
+  ideal linEq = ideal(M*aVec);
+  ideal linSol = std(linEq);
+  int k=d+1;
+  for (; dim(linSol)>1; k--)
+  { // add constraints until zero-dimensional to ensure minimaliy of support
+    linSol = linSol,a(k);
+    linSol = std(linSol);
+  }
+  matrix mPCoeff[d+1][1] = indepSet(linSol);
+
+  linSol = simplify(linSol,1);
+  for (int i=1; mPCoeff[i,1]==0; i++)
+  {
+    mPCoeff[i,1] = leadcoef(var(i)-linSol[d+1-i]);
+  }
+
+  setring rOrigin;
+  matrix mPCoeff = imap(rLinAlg,mPCoeff);
+  poly mP = 0;
+  for(int i = 1; i <= d+1; i++)
+  {
+    mP = mP + mPCoeff[i,1]*var(2)^(i-1);
+  }
+
+  return(ideal(mP));
+}
+
+proc binaryEliminantFGLM(ideal I)
+{
+  ring rOrigin = basering;
+  poly f = I[1];
+  poly h = I[2] div var(2);
+  poly g = h*var(2)-I[2];
+
+  // make I = (f(x),h(x)*y-g(x)) into (f(x),y-g(x)/h(x))
+  // which is a GB w.r.t. lex ordering
+  ring rShort = 0,var(1),dp;
+  poly f = imap(rOrigin,f);
+  poly g = imap(rOrigin,g);
+  poly h = imap(rOrigin,h);
+  poly hClear = cleardenom(h);
+  number dClear = leadcoef(hClear[1])/leadcoef(h[1]);
+  list EGCD = extgcd(hClear,f);
+  poly q = EGCD[2]*dClear;
+  poly hInvg = reduce(q*g,f);
+
+  setring rOrigin;
+  ring rFGLMStart = 0,(var(2),var(1)),lp;
+  ideal stdI = imap(rShort,f), cleardenom(var(1)-imap(rShort,hInvg)); //new var(1) is old var(2)!
+  attrib(stdI,"isSB",1);
+
+  setring rOrigin;
+  ring rElim = 0,(var(1),var(2)),lp;
+  ideal stdI = fglm(rFGLMStart,stdI);
+  poly eliminant = stdI[1];
+
+  setring(rOrigin);
+  return(ideal(imap(rElim,eliminant)));
+}
+
+proc binaryEliminantResultant(ideal I)
+{
+  return(ideal(resultant(I[2],I[1],var(1))));
+}
+
+proc binaryEliminantGroebner(ideal I)
+{
+  ring rOrigin = basering;
+
+  ring rElim = 0,(var(1),var(2)),lp;
+  ideal I = imap(rOrigin,I);
+  ideal stdI = groebner(I);
+  poly eliminant = stdI[1];
+
+  setring(rOrigin);
+  return(ideal(imap(rElim,eliminant)));
+}
+
+proc binaryEliminantDPthenFGLM(ideal I)
+{
+  ring rOrigin = basering;
+
+  ring rDp = 0,(var(1),var(2)),dp;
+  ideal I = imap(rOrigin,I);
+  ideal stdI = std(I);
+
+  ring rElim = 0,(var(1),var(2)),lp;
+  ideal stdI = fglm(rDp,stdI);
+  poly eliminant = stdI[1];
+
+  setring(rOrigin);
+  return(ideal(imap(rElim,eliminant)));
+}
+
+static proc primeTest_BE(int p, alias list args)
+/* test if the prime p is suitable for the input */
+{
+  def I = args[1];
+
+  /* I = (f(x), h(x)*y-g(x)), so we need:
+       (1) f(x) maintains its degree modulo p.
+       (2) h(x) and f(x) are relatively prime modulo p.
+  */
+  ring rOrigin = basering;
+  poly f = I[1];
+  poly h = I[2] div var(2);
+  poly g = h*var(2)-I[2];
+
+  if(bigint(leadcoef(f))%p == 0)
+  {
+    return(0);
+  }
+
+  ring rMod = p,(var(1),var(2)),dp;
+  poly f = imap(rOrigin, f);
+  poly h = imap(rOrigin, h);
+  poly q = gcd(f,h);
+  if(deg(q) > 0 || q == 0)
+  {
+    setring rOrigin;
+    return(0);
+  }
+  setring rOrigin;
+  return(1);
+}
+
+
+static proc deleteUnluckyPrimes_BE(alias list modresults)
+// find entries in modresults which come from unlucky primes.
+// WARNING: The implementation is based on the assumption that not all
+//          of the primes are unlucky.
+{
+  int maxDeg = -2;
+  for(int i = 1; i <= size(modresults); i++)
+  {
+    def J = modresults[i];
+    int d = deg(J[1]);
+    if(d > maxDeg)
+    {
+      maxDeg = d;
+    }
+  }
+
+  /* return all other indices */
+  list unluckyIndices;
+  for(int i = 1; i <= size(modresults); i++)
+  {
+    def J = modresults[i];
+    int d = deg(J[1]);
+    if(d < maxDeg)
+    {
+      unluckyIndices[size(unluckyIndices)+1] = i;
+    }
+  }
+  return(unluckyIndices);
+}
+
+static proc pTest_BE(string command, alias list args, alias def result, int p)
+/* test if 'command' applied to 'args' in characteristic p is the same as
+   'result' mapped to characteristic p */
+{
+    ring rOrigin = basering;
+    ideal I = args[1];
+    ideal elim = result;
+
+    // compute command(args) modulo p
+    ring rMod = p,(var(1),var(2)),dp;
+    ideal I = imap(rOrigin, I);
+    ideal elim = imap(rOrigin, elim);
+    ideal elimMod;
+    execute("elimMod = "+command+"(I);");
+
+    if(simplify(elim,1)[1] == simplify(elimMod,1)[1])
+    {
+      setring rOrigin;
+      return(1);
+    }
+    else
+    {
+      setring rOrigin;
+      return(0);
+    }
+}
+
+static proc finalTest_BE(string command, alias list args, def result)
+// test if 'result' is correct
+// WARNING: We don't implement this, and just assume that everything is fine.
+// Question: How would we even do this efficiently?
+{
+  return(1);
+}

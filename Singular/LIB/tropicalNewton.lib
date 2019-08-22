@@ -909,7 +909,7 @@ example
   kill uniformizingParameter;
 }
 
-static proc pivotIndices(matrix H)
+proc pivotIndices(matrix H)
 {
   intvec p;
   p[ncols(H)]=0;

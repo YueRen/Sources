@@ -74,21 +74,21 @@ BOOLEAN minimalRepresentative(leftv res, leftv args)
 }
 
 
-BOOLEAN valuation(leftv res, leftv args)
-{
-  leftv u = args;
-  if ((u != NULL) && (u->Typ() == NUMBER_CMD))
-  {
-    number c = (number) u->Data();
-    gfan::Rational v = puiseuxValuation(c,currRing->cf);
+// BOOLEAN valuation(leftv res, leftv args)
+// {
+//   leftv u = args;
+//   if ((u != NULL) && (u->Typ() == NUMBER_CMD))
+//   {
+//     number c = (number) u->Data();
+//     gfan::Rational v = puiseuxValuation(c,currRing->cf);
 
-    res->rtyp = INT_CMD;
-    res->data = (void*) rationalToInt(v);
-    return FALSE;
-  }
-  WerrorS("valuation: unexpected parameters");
-  return TRUE;
-}
+//     res->rtyp = INT_CMD;
+//     res->data = (void*) rationalToInt(v);
+//     return FALSE;
+//   }
+//   WerrorS("valuation: unexpected parameters");
+//   return TRUE;
+// }
 
 
 BOOLEAN tropicalStartingConeNewton(leftv res, leftv args)
@@ -332,7 +332,7 @@ extern "C" int SI_MOD_INIT(tropical)(SModulFunctions* p)
 {
   p->iiAddCproc("","permutationGroup",FALSE,permutationGroup);
   p->iiAddCproc("","minimalRepresentative",FALSE,minimalRepresentative);
-  p->iiAddCproc("","valuation",FALSE,valuation);
+  // p->iiAddCproc("","valuation",FALSE,valuation);
   p->iiAddCproc("","tropicalStartingConeNewton",FALSE,tropicalStartingConeNewton);
   p->iiAddCproc("","tropicalVarietyNew",FALSE,tropicalVarietyNew);
   p->iiAddCproc("","fVectorModuloSymmetry",FALSE,fVectorModuloSymmetry);

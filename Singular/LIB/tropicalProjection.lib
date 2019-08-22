@@ -29,7 +29,7 @@ binaryEliminantGroebner           helper function to be called in binaryEliminan
 binaryEliminantDPthenFGLM         helper function to be called in binaryEliminant
 fastExponentiation                computes g^k mod f for f,g polynomials
                                     and k a positive integer
-newtonPolygonNegSlopesWithMult    returns the negative slopes of the Newton polgyon
+tropicalVarietyUnivariate    returns the negative slopes of the Newton polgyon
                                     with multiplicity
 tropicalProjection                computes a (skew) projection of a zero-dimensional
                                     tropical variety
@@ -412,11 +412,11 @@ static proc lexSmallestVariableIndex(poly g)
   return (-1);
 }
 
-proc newtonPolygonNegSlopesWithMult(poly g, number uniformizingParameter)
-"USAGE:   newtonPolygonNegSlopesWithMult(poly g, number uniformizingParameter);
+proc tropicalVarietyUnivariate(poly g, number uniformizingParameter)
+"USAGE:   tropicalVarietyUnivariate(poly g, number uniformizingParameter);
 RETURN:  list, the negative slopes of the Newton Polygon of g in ascending order
 ASSUME:  g univariate and at least binomial
-EXAMPLE: example newtonPolygonNegSlopesWithMult; shows an example
+EXAMPLE: example tropicalVarietyUnivariate; shows an example
 "
 {
   // 1. write g as a polynomial in the lex. smallest variable occuring in it
@@ -478,11 +478,11 @@ example
 { "EXAMPLE:"; echo = 2;
   ring r = (0,t),x,dp;
   poly g = tx2+x+1;
-  newtonPolygonNegSlopesWithMult(g,t);
+  tropicalVarietyUnivariate(g,t);
   // poor man's polynomials over p-adic numbers:
   ring s = 0,x,dp;
   poly g = x2+9x+1;
-  newtonPolygonNegSlopesWithMult(g,number(3));
+  tropicalVarietyUnivariate(g,number(3));
 }
 
 static proc pickMerge(list workingList, list mStrat)
@@ -922,7 +922,7 @@ EXAMPLE: tropicalProjection, shows an example
     setring rOrigin;
     ideal stdI = imap(rTropicalProjection,stdI);
     poly eliminant = stdI[1];
-    list TM = newtonPolygonNegSlopesWithMult(eliminant,uniformizingParameter);
+    list TM = tropicalVarietyUnivariate(eliminant,uniformizingParameter);
     return (list(TM,stdI));
   }
 
@@ -991,7 +991,7 @@ EXAMPLE: tropicalProjection, shows an example
 
   setring rOrigin;
   poly eliminant = imap(rBivariate,eliminant);
-  list TM = newtonPolygonNegSlopesWithMult(eliminant,uniformizingParameter);
+  list TM = tropicalVarietyUnivariate(eliminant,uniformizingParameter);
   return (list(TM,ideal(eliminant)));
 }
 example
@@ -1174,10 +1174,10 @@ EXAMPLE: tropicalVarietyViaProjection; shows an example
     list out = parallelWaitAll("binaryEliminant",args);
 
     list WM;
-    WM[n] = newtonPolygonNegSlopesWithMult(stdI[1],uniformizingParameter);
+    WM[n] = tropicalVarietyUnivariate(stdI[1],uniformizingParameter);
     for(int i=1; i<n; i++)
     {
-      WM[i] = newtonPolygonNegSlopesWithMult(out[i],uniformizingParameter);
+      WM[i] = tropicalVarietyUnivariate(out[i],uniformizingParameter);
     }
   }
   else

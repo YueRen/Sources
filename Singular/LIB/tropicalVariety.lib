@@ -42,27 +42,364 @@ PROCEDURES:
 
 proc mod_init()
 {
+  option(noredefine);
+  option(redSB);
   LIB "gfan.lib";
   LIB "triang.lib";
   LIB "linalg.lib";
+  LIB "presolve.lib";
   LIB "tropicalNewton.lib";
   LIB "tropicalPuiseux.lib";
-  option(redSB);
-  newstruct("decoratedGroebnerCone","cone polyhedralCone, bigintmat orbitIdentifier, ring polynomialRing, ideal polynomialIdeal, number uniformizingParameter");
+  LIB "tropicalProjection.lib";
+  LIB "tropical.so";
+  newstruct("decoratedGroebnerCone","cone polyhedralCone, bigintmat orbitIdentifier, ring polynomialRing, ideal polynomialIdeal, ideal initialIdeal, number uniformizingParameter");
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 
-proc decoratedGroebnerConeFromIdeals(ideal I, ideal inI, list symmetryGroup)
+// returns the tropicalization of a monomial f, i.e.,
+// if f = c_\alpha*x^\alpha, returns val(c_\alpha)+\alpha*x
+static proc tropicalizeMonomial(poly f, number uniformizingParameter)
 {
-  decoratedGroebnerCone sigma;
-  sigma.polynomialRing = basering;
-  sigma.polynomialIdeal = I;
-  sigma.uniformizingParameter = uniformizingParameter;
-  sigma.polyhedralCone = groebnerConeFromIdeals(I,inI);
-  sigma.orbitIdentifier = minimalRepresentative(uniquePoint(sigma.polyhedralCone),symmetryGroup);
-  return (sigma);
+  if (f==0)
+  {
+    return (0);
+  }
+
+  poly ftrop = valuation(leadcoef(f),uniformizingParameter);
+  intvec fexp = leadexp(f);
+  for (int i=size(fexp); i>0; i--)
+  {
+    ftrop = ftrop + fexp[i]*var(i);
+  }
+  return (ftrop);
 }
+
+static proc tropicalizeMonomials(ideal F, number uniformizingParameter)
+{
+  ideal Ftrop;
+  for (int i=size(F); i>0; i--)
+  {
+    Ftrop[i] = tropicalizeMonomial(F[i],uniformizingParameter);
+  }
+  return (Ftrop);
+}
+
+// merges two lists of tropical points with multiplicities
+static proc mergeWM(list globalWM, list localWM)
+{
+  matrix globalW = globalWM[1];
+  intvec globalM = globalWM[2];
+  matrix localW = localWM[1];
+  intvec localM = localWM[2];
+  int n = ncols(globalW);
+  // "=================================";
+  // "In globalW";
+  // print(globalW);
+  // "In globalM";
+  // globalM;
+  // "In localW";
+  // print(localW);
+  // "In localM";
+  // localM;
+
+  for (int i=nrows(localW); i>0; i--)
+  {
+    // iterate backwards through all rows of globalW,
+    // break if a row is found that is smaller or equal to localW[i]
+    for (int j=nrows(globalW); j>0; j--)
+    {
+      if (localW[i,1..n] >= globalW[j,1..n])
+      {
+        break;
+      }
+    }
+
+    if (j==0)
+    {
+      // localW[i] smaller than all rows of globalW, preprend it
+      matrix newGlobalW[nrows(globalW)+1][n];
+      newGlobalW[1,1..n] = localW[i,1..n];
+      newGlobalW[2..nrows(globalW)+1,1..n] = globalW;
+      globalW = newGlobalW;
+      globalM = localM[i],globalM;
+    }
+    else
+    {
+      if (localW[i,1..n] == globalW[j,1..n])
+      {
+        // localW[i] occurs in globalW, increment globalM accordingly
+        globalM[j] = globalM[j]+localM[i];
+      }
+      else
+      {
+        // localW[i] does not occur in globalW, insert it in position j+1
+        matrix newGlobalW[nrows(globalW)+1][n];
+        newGlobalW[j+1,1..n] = localW[i,1..n];
+        intvec newGlobalM;
+        newGlobalM[size(globalM)+1] = 0;
+        newGlobalM[j+1] = localM[i];
+
+        newGlobalW[1..j,1..n] = globalW[1..j,1..n];
+        newGlobalM[1..j] = globalM[1..j];
+
+        if (j<nrows(globalW))
+        {
+          newGlobalW[j+2..nrows(globalW)+1,1..n] = globalW[j+1..nrows(globalW),1..n];
+          newGlobalM[j+2..size(globalM)+1] = globalM[j+1..size(globalM)];
+        }
+        globalW = newGlobalW;
+        globalM = newGlobalM;
+      }
+    }
+  }
+  // "Out globalW";
+  // print(globalW);
+  // "Out globalM";
+  // globalM;
+  return (list(globalW,globalM));
+}
+example
+{ "EXAMPLE for testing purposes"; echo=2;
+
+  ring r = 0,x,dp;
+  matrix globalW[5][3] =
+    -1,0,1,
+    -1,1,0,
+    0,0,0,
+    1,-1,0,
+    1,0,0;
+  intvec globalM = 1,2,3,4,5;
+
+  matrix localW[5][3] =
+    -1,-1,-1,
+    -1,2,-1,
+    0,0,0,
+    0,1,1,
+    1,0,1;
+  intvec localM = 9,8,7,6,5;
+  list mergedWM = mergeWM(list(globalW,globalM),list(localW,localM));
+  print(mergedWM[1]);
+  mergedWM[2];
+}
+
+proc tropicalVarietyZerodimensional(ideal I, number uniformizingParameter, list #)
+"USAGE:  tropicalVarietyZerodimensional(ideal I[, string strat, ...]);
+ASSUME:  I is zerodimensional over a field of characteristics 0
+NOTE:    possible strategies are
+           separation - use projection to seperate the roots (default)
+           approximation - use approximation to determin the roots (to come)
+RETURN:  list(W,M), where
+           W = matrix whose rows are the points in Trop(I)
+           M = intvec whose entries are the multiplicities of the points in Trop(I)
+EXAMPLE: example tropicalVarietyZerodimensional; shows an example
+"
+{
+  option(redSB);
+
+  // 0: preparation, read off optional parameters
+  //      and compute a lexicographical GB.
+  string strat = "separation";
+  if (size(#)>0)
+  {
+    strat = #[1];
+  }
+
+  def rOrigin = basering;
+  int n = nvars(basering);
+
+  execute("ring rLex = ("+charstr(rOrigin)+"),("+varstr(rOrigin)+"),lp;");
+  ideal I = fetch(rOrigin,I);
+  ideal stdI = stdfglm(I);
+  number uniformizingParameter = fetch(rOrigin,uniformizingParameter);
+
+  // 2:  preprocessing.
+  // 2.0 compute factorizing triangular decomposition.
+  //       the rest will be done for each triangular set individually and
+  //       'I' will refer to a triangular factor of the original ideal
+  list triangularDecomposition = triangLfak(stdI);
+
+  list triangularDecompositionWM;
+  for (int kTriang = size(triangularDecomposition); kTriang>0; kTriang--)
+  {
+    setring rLex;
+    ideal ITriang = triangularDecomposition[kTriang];
+
+    // 2.1 identify x_i with x_i = \lambda or x_i = \lambda*x_j^{d_j}
+    //       for some constant \lambda and some power d_j.
+    //       the valuation of these variables are uniquely determined.
+    list E = elimpart(ITriang);
+    // Explanation of elimpart:
+    //   What it does: fast heuristic computation to obtain a map \phi: K[x] -> K[u],
+    //   where K[x] stands for the basering and u is a subset of x,
+    //   together with an ideal Iu in K[u] such that K[x]/I \cong K[u]/Iu.
+    //   What it returns:
+    //   - E[1] = Iu (type ideal)
+    //   - E[2] = v, where v = x \setminus u
+    //   - E[3] = kernel(\phi)
+    //   - E[4] = maxideal(1), but with all x not in u substituted with 0
+    //   - E[5] = \phi(maxideal(1))
+
+    // parse the output of elimpart:
+    //   go through E[4] and E[5] and identify all variables which have been (eliminated AND)
+    //   substituted by a monomial in u, these for the variables of our simplified ring
+    ideal u = E[4];           // might need to add more x to u
+    ideal xImage = E[5];      // might need to undo a few substitutions
+    for (int i=1; i<=n; i++)
+    {
+      if (E[4][i] == 0 && size(xImage[i])>1) // if it was eliminated but with no monomial
+      {                                      // undo the elimination
+        u[i] = var(i);
+        xImage[i] = var(i);
+      }
+    }
+    u = simplify(u,2);  // removes all zero entries so that the entries of u are
+                        // in bijection with the variables that were not eliminated
+    ideal xImageTrop = tropicalizeMonomials(xImage,uniformizingParameter);
+    // 3: compute Trop(ISimplified)
+    if (size(u)==0)
+    {
+      // 3.0 very trivial case.
+      //       I has one solution which lives over the basefield and was found using elimpart
+      //       in this case, xImageTrop is the desired tropicalPoint
+      matrix tropicalPoint[1][n] = xImageTrop[1..n];
+      triangularDecompositionWM[kTriang] = list(tropicalPoint,intvec(1));
+      kTriang--;
+      continue; // WARNING: does not decrement kTriang
+    }
+
+    // 3.2 general case.
+    // 3.2.0  create the simplified ring with the simplified ideal
+    execute("ring rSimplified = ("+charstr(rLex)+"),("+string(u)+"),dp");
+    map phi = rLex,imap(rLex,xImage);
+    ideal ITriangSimplified = groebner(phi(ITriang));
+    number uniformizingParameter = fetch(rLex,uniformizingParameter);
+
+    // 3.2.1:  compute tropical variety of simplified ring according to strategy
+    list WMSimplified;
+    if (nvars(rSimplified)==1)
+    {
+      if (size(ITriangSimplified)>1 || deg(ITriangSimplified)==0)
+      {
+        ERROR("tropicalVarietyZerodimensional: bug in reduction to the zero-dimensional case");
+      }
+      list out = tropicalVarietyUnivariate(ITriangSimplified[1],uniformizingParameter);
+      list out1 = out[1];
+      matrix WSimplified[size(out1)][1] = out1[1..size(out1)];
+      list out2 = out[2];
+      intvec MSimplified = out2[1..size(out2)];
+      WMSimplified = list(WSimplified,MSimplified);
+    }
+    if (nvars(rSimplified)>1 && strat == "separation")
+    {
+      WMSimplified = tropicalVarietyViaProjection(ITriangSimplified,uniformizingParameter,mergeStrat("overlap"),"minpoly");
+    }
+
+    setring rLex;
+    list WMSimplified = imap(rSimplified,WMSimplified);
+    matrix WSimplified = WMSimplified[1];
+    intvec MSimplified = WMSimplified[2];
+
+
+    // 4: reconstruct tropical variety of (un-)Simplified ideal
+    // 4.1  construct W
+    //        each row of W are the tropical polynomials in u
+    //        evaluated at the same row of WSimplified
+    matrix W[nrows(WSimplified)][n];
+    for (int i=nrows(W); i>0; i--)
+    {
+      ideal xImageTropSubst = xImageTrop;
+      for (int j=size(u); j>0; j--)
+      {
+        xImageTropSubst = subst(xImageTropSubst,u[j],WSimplified[i,j]);
+      }
+      W[i,1..n] = xImageTropSubst;
+    }
+
+    // 4.2  construct M and save both W and M in the global list spanning all triangular sets
+    intvec M = MSimplified;
+    triangularDecompositionWM[kTriang] = list(W,M);
+  }
+
+
+  // 5: merge W and M for all triangular sets
+  setring rLex;
+  list globalWM = triangularDecompositionWM[size(triangularDecomposition)];
+  for (int i=size(triangularDecomposition)-1; i>0; i--)
+  {
+    globalWM = mergeWM(globalWM,triangularDecompositionWM[i]);
+  }
+
+  setring rOrigin;
+  list globalWM = fetch(rLex,globalWM);
+  return (globalWM);
+}
+example
+{ "EXAMPLE:"; echo = 2;
+  ring r = 0,(x,y,z,w),dp;
+  number uniformizingParameter = 2;
+
+  // Example 1: roots in the base field,
+  //   triangular decomposition + elimpart will find all solutions
+  //   no explicit tropical variety computation necessary
+  ideal I1 =
+    (x-1)*(x-2)*(x-4)*(x-6)*(x-8),
+    y-2x,
+    z-2y,
+    w-2z;
+  list TropI1 = tropicalVarietyZerodimensional(I1,uniformizingParameter);
+  print(TropI1[1]);
+  TropI1[2];
+
+  // Example 2: roots not in the base field, but ideal in shape form
+  //   triangular decomposition + elimpart will eliminate all but one variable
+  //   no explicit tropical variety computation necessary
+  ideal I2 =
+    2+x+x2+x3+2x4,
+    y-2x,
+    z-2y,
+    w-2z;
+  list TropI2 = tropicalVarietyZerodimensional(I2,uniformizingParameter);
+  print(TropI2[1]);
+  TropI2[2];
+
+  // Example 3: explicit tropical variety computation necessary
+  ideal I3 =
+    2+x+x2+x3+2x4,
+    y-2x2+x+1,
+    z-x2+2x+1,
+    w-x2+x+2;
+  list TropI3 = tropicalVarietyZerodimensional(I3,uniformizingParameter);
+  print(TropI3[1]);
+  TropI3[2];
+}
+
+proc computeUnmixedInitialIdeal(ideal uI, number uniformizingParameter, intvec w)
+{
+  def rOrigin = basering;
+  int n = nvars(basering);
+  intvec wPre = -onesVector(n);
+  wPre[1] = 0;
+  execute("ring rInitial = ("+charstr(rOrigin)+"),("+varstr(rOrigin)+"),(a(wPre),a(w),rp);");
+  option(prot);
+  ideal uI = groebner(fetch(rOrigin,uI));
+  option(noprot);
+  number uniformizingParameter = fetch(rOrigin,uniformizingParameter);
+
+  option(infRedTail);
+  uI = interred(uI); // terminates as valuation decreases
+                     // if degree increases
+                     // uI is homogeneous in x and contains p-t
+  option(noinfRedTail);
+  ideal inI = initial(uI,w);
+  ~;
+  export(rInitial);
+  export(uI);
+  export(uniformizingParameter);
+  export(inI);
+  return (rInitial);
+}
+
 
 // copied from groebnerCone.cc
 proc groebnerConeFromIdeals(ideal I, ideal inI)
@@ -102,6 +439,33 @@ proc groebnerConeFromIdeals(ideal I, ideal inI)
     }
   }
   return(canonicalizeCone(coneViaInequalities(inequalities, equalities)));
+}
+
+proc computeDecoratedGroebnerConeFromWeight(ideal uI, number uniformizingParameter, intvec w, list symmetryGroup)
+{
+  def rSigma = computeUnmixedInitialIdeal(uI, uniformizingParameter, w);
+  setring rSigma;
+  cone CwI = groebnerConeFromIdeals(uI,inI);
+
+  decoratedGroebnerCone sigma;
+  sigma.polyhedralCone = CwI;
+  sigma.orbitIdentifier = minimalRepresentative(uniquePoint(CwI),symmetryGroup);
+  sigma.polynomialRing = rSigma;
+  sigma.polynomialIdeal = uI;
+  sigma.initialIdeal = inI;
+  sigma.uniformizingParameter = uniformizingParameter;
+  return (sigma);
+}
+
+proc decoratedGroebnerConeFromIdeals(ideal I, ideal inI, list symmetryGroup)
+{
+  decoratedGroebnerCone sigma;
+  sigma.polynomialRing = basering;
+  sigma.polynomialIdeal = I;
+  sigma.uniformizingParameter = uniformizingParameter;
+  sigma.polyhedralCone = groebnerConeFromIdeals(I,inI);
+  sigma.orbitIdentifier = minimalRepresentative(uniquePoint(sigma.polyhedralCone),symmetryGroup);
+  return (sigma);
 }
 
 // In: M,N two bigintmats
@@ -386,8 +750,246 @@ proc tropicalTraversalStep(decoratedGroebnerCone coneInWorkingList, list knownCo
   return(list(neighbouringCones,newCones,newConesInsertionPoints,newLinks,newLinksInsertionPoints));
 }
 
-// compute a starting cone
-proc tropicalStartingCone(ideal I, list #)
+proc naRandomNumber(number uniformizingParameter, int cval, list #)
+"USAGE:  naRandomNumber(number uniformizingParameter, int cval[, int csize, int clength, int cspread]);
+RETURN:  a randomized number with a given valuation of the form
+           c_1 p^{v_1} + ... + c_k p^{v_k}, where
+         - p = uniformizingParameter
+         - k = clength
+         - v_1 = cval
+         _ v_i = v_{i-1} + random(0,cspread)
+         - c_i = r_i/valuation(r_i,p) with r_i = random(0,csize)
+NOTE:    defaults:
+         - csize = 9999
+         - clength = 3
+         - cspread = 9
+         rule of thumb:
+         - for padic: more length, less spread (as default)
+         - for Puiseux: less length, more spread
+"
+{
+  int csize = 9999;
+  if (size(#)>0)
+  {
+    csize = #[1];
+  }
+  int clength = 3;
+  if (size(#)>1)
+  {
+    clength = #[2];
+  }
+  int cspread = 9;
+  if (size(#)>2)
+  {
+    cspread = #[3];
+  }
+
+  int v = cval;
+  number c = random(1,csize);
+  c = c/uniformizingParameter^valuation(c,uniformizingParameter);
+  number C = c*uniformizingParameter^v;
+  for (int i=1; i<clength; i++)
+  {
+    v = v+random(1,cspread);
+    number c = random(1,csize);
+    c = c/uniformizingParameter^valuation(c,uniformizingParameter);
+    C = C + c*uniformizingParameter^v;
+  }
+
+  return (C);
+}
+example
+{ "EXAMPLE for testing purposes"; echo=2;
+  ring r = 0,x,dp;
+  number uniformizingParameter = 2;
+  naRandomNumber(uniformizingParameter, 0);
+  naRandomNumber(uniformizingParameter, 0, 999999, 2, 33);
+  naRandomNumber(uniformizingParameter, 0, 999999, 5, 3);
+
+  ring s = (0,t),x,dp;
+  number uniformizingParameter = t;
+  naRandomNumber(uniformizingParameter, 0);
+  naRandomNumber(uniformizingParameter, 0, 999999, 2, 33);
+  naRandomNumber(uniformizingParameter, 0, 999999, 5, 3);
+}
+
+static proc naRandomLinearForm(number uniformizingParameter, int b, list #)
+{
+  poly f = naRandomNumber(uniformizingParameter, random(0,b), #);
+  for (int i=nvars(basering); i>0; i--)
+  {
+    f = f + naRandomNumber(uniformizingParameter, random(0,b), #) * var(i);
+  }
+  return (f);
+}
+
+static proc naRandomLinearSpace(int cd, number uniformizingParameter, int b, list #)
+{
+  ideal L;
+  for (int i=cd; i>0; i--)
+  {
+    L[i] = naRandomLinearForm(uniformizingParameter,b,#);
+  }
+  return (groebner(L));
+}
+example
+{ "EXAMPLE for testing purposes"; echo=2;
+  int n = 5;
+
+  ring r = 0,(x1,x2,x3,x4,x5),dp;
+  number uniformizingParameter = 2;
+  ideal L1 = naRandomLinearSpace(1,uniformizingParameter, 99);
+  n - dim(L1);
+  ideal L2 = naRandomLinearSpace(2,uniformizingParameter, 99);
+  n - dim(L2);
+  ideal L3 = naRandomLinearSpace(3,uniformizingParameter, 99);
+  n - dim(L3);
+
+  ring s = (0,t),(x1,x2,x3,x4,x5),dp;
+  number uniformizingParameter = t;
+  ideal L1 = naRandomLinearSpace(1,uniformizingParameter, 99);
+  n - dim(L1);
+  ideal L2 = naRandomLinearSpace(2,uniformizingParameter, 99);
+  n - dim(L2);
+  ideal L3 = naRandomLinearSpace(3,uniformizingParameter, 99);
+  n - dim(L3);
+}
+
+static proc dissectLinealitySpace(ideal stdI)
+"USAGE:  dissectLinealitySpace(ideal stdI);
+ASSUME:  stdI reduced Groebner basis
+RETURN:  ideal stdIL, such that Trop(stdIL) = Trop(stdI) \cap H
+           for a linear space H generated by unit vectors and
+           orthogonal to the the lineality space of Trop(stdI)
+"
+{
+  cone C0 = homogeneitySpace(stdI);
+  matrix H = gauss_nf(intmat(generatorsOfLinealitySpace(C0)));
+  intvec p = pivotIndices(H);
+
+  ideal L;
+  for (int i=1; i<=nvars(basering); i++)
+  {
+    if (p[i]==1)
+    {
+      L[size(L)+1] = poly(var(i)-1);
+    }
+  }
+
+  return (groebner(stdI+L));
+}
+
+
+static proc homogenizeMatrix(matrix CMatrix)
+"USAGE:  homogenizeMatrix(matrix CMatrix);
+ASSUME:  CMatrix is a matrix of rational numbers
+RETURN:  intmat CIntmat, each row of CInmat is a row of CMatrix
+           in homogeneous coordinates
+"
+{
+  int r = nrows(CMatrix);
+  int c = ncols(CMatrix);
+
+  intmat CIntmat[r][c+1];
+  int denominatorLCM;
+  for (int i=1; i<=r; i++)
+  {
+    // multiply each row with the lcm of all denominators
+    denominatorLCM = int(denominator(number(CMatrix[i,1])));
+    for (int j=2; j<=c; j++)
+    {
+      denominatorLCM = lcm(denominatorLCM,int(denominator(number(CMatrix[i,j]))));
+    }
+    CMatrix[i,1..c] = CMatrix[i,1..c]*denominatorLCM;
+
+    CIntmat[i,1] = -denominatorLCM;
+    CIntmat[i,2..c+1] = int(CMatrix[i,1..c]);
+  }
+
+  return(CIntmat);
+}
+
+proc tropicalPoints(ideal I, number uniformizingParameter, list #)
+"USAGE:  tropicalPoints(ideal I, number uniformizingParameter[, int b]);
+RETURN:  a list of points on Trop(I)
+NOTE:    intersects V(I) with a random affine linear space H complementary dimension
+           with Trop(H) orthogonal to the lineality space of Trop(I) and
+           generated by linear forms whose coefficients have valuation between 0 and b (default: b=32).
+           Returns the tropicalization of the resulting zero-dimensional ideal
+EXAMPLE: example tropicalPoints; shows an example
+"
+{
+  int b = 32;
+  if (size(#) > 0)
+  {
+    b = #[1];
+  }
+
+  // 1: reduce to dimension 0
+  def rOrigin = basering;
+  int n = nvars(basering);
+  I = groebner(I);
+
+  // 1.1: dissect lineality space
+  ideal IL = dissectLinealitySpace(I);
+  int dIL = dim(IL);
+
+  // 1.2: intersect with affine space of complimentary dimension
+  ideal IL0 = groebner(IL+naRandomLinearSpace(dIL,uniformizingParameter,99),0);
+  int dIL0 = dim(IL0);
+  while (dIL0>0)
+  {
+    dbprint("WARNING: tropicalPoints: encountered degenerate affine linear space");
+    IL0 = groebner(IL+naRandomLinearSpace(dIL,uniformizingParameter,99),0);
+    dI0 = dim(IL0);
+  }
+
+  // 2: compute zerodimensional tropical variety
+  list WM = tropicalVarietyZerodimensional(IL0,uniformizingParameter);
+  return(list(-WM[1],WM[2]));
+}
+
+proc mixCharacteristics(ideal uI, number uniformizingParameter)
+{
+  def rOrigin = basering;
+  int n = nvars(basering);
+
+  string xString;
+  for (int i=2; i<=n; i++)
+  {
+    xString = xString+varstr(rOrigin,i)+",";
+  }
+  xString = xString[1..size(xString)-1];
+
+  if (pardeg(uniformizingParameter)>0)
+  {
+    ERROR("mixCharacteristics: Puiseux case not implemented yet"); // todo
+  }
+  else
+  {
+    execute("ring rMixed = 0,("+xString+"),dp;");
+    number uniformizingParameter = fetch(rOrigin,uniformizingParameter);
+    map phiMixed = rOrigin,uniformizingParameter,maxideal(1);
+    ideal mI = phiMixed(uI);
+    export(mI);
+    export(uniformizingParameter);
+    return (rMixed);
+  }
+}
+
+proc tropicalStartingCones(ideal uI, number uniformizingParameter, list #)
+"USAGE:  tropicalStartingCones(ideal sI, number uniformizingParameter[, list symmetryGroup]);
+ASSUME:  uI unmixed
+RETURN:  a list of maximal decorated Groebner cones on Trop(I)
+NOTE:    Repeatedly calls tropicalPoints until at least one maximal cone is found.
+         Returns all maximal cones found in that iteration
+EXAMPLE: example tropicalStartingCones; shows an example
+TODO:    One can reuse the initial ideals of the lower-dimensional points
+         to compute maximal-dimensional points.
+         However, the initial ideals will most likely be over finite characteristics,
+         and Singular does not support working with rational data
+         unless the rational numbers are a subfield of the coefficient field.
+"
 {
   list symmetryGroup;
   if (size(#) > 0)
@@ -395,39 +997,48 @@ proc tropicalStartingCone(ideal I, list #)
     symmetryGroup = #;
   }
 
-  int d = -1;
-  def origin = basering;
-  matrix startingPointMat;
-  cone startingPolyhedralCone;
-  intvec startingPoint;
-  // since tropicalPointNewton is probabilistic, compute cone until it has
-  // same dimension as ideal
-  while(1)
+  def rOrigin = basering;
+  def rMixed = mixCharacteristics(uI, uniformizingParameter);
+  setring rMixed;
+  mI = groebner(mI);
+  int dmI = dim(mI);
+
+  list startingCones;
+  for (int iterationNumber=1; size(startingCones)==0; iterationNumber++)
   {
-    startingPointMat = tropicalPointNewton(I);
-    startingPoint = cccMatrixToPositiveIntvec(startingPointMat);
-    def startingRing = switchRingsAndComputeInitialIdeal(I, startingPoint);
-    setring startingRing;
-    number uniformizingParameter = fetch(origin,uniformizingParameter);
-    export(uniformizingParameter);
-    if (d < 0)
+    // 1. compute a random section of tropical points
+    //    with increasing bounds
+    setring rMixed;
+    list WM = tropicalPoints(mI,uniformizingParameter,32+6*iterationNumber);
+    intmat W = homogenizeMatrix(WM[1]);
+    ~;
+    // 2. compute the Groebner cone around each tropical point
+    setring rOrigin;
+    string command = "computeDecoratedGroebnerConeFromWeight";
+    list arguments;
+    for (int i=nrows(W); i>0; i--)
     {
-      d = dim(stdI);
+      arguments[i] = list(uI,uniformizingParameter,intvec(W[i,1..ncols(W)]),symmetryGroup);
     }
-    startingPolyhedralCone = groebnerConeFromIdeals(stdI, inI);
-    if (dimension(startingPolyhedralCone) == d)
+    list out = fakeParallelWaitAll(command,arguments);
+
+    // 3. filter out those of maximal dimension
+    for (int i=size(out); i>0; i--)
     {
-      decoratedGroebnerCone startingCone;
-      startingCone.polyhedralCone = startingPolyhedralCone;
-      startingCone.orbitIdentifier = minimalRepresentative(uniquePoint(startingPolyhedralCone),symmetryGroup);
-      startingCone.polynomialRing = startingRing;
-      startingCone.polynomialIdeal = stdI;
-      startingCone.uniformizingParameter = uniformizingParameter;
-      return (startingCone);
+      decoratedGroebnerCone sigma = out[i];
+      int dsigma = dimension(sigma.polyhedralCone);
+      if (dsigma > dmI+1)
+      {
+        ~;
+        ERROR("tropicalStartingCones: encountered tropical polyhedra of too high dimension");
+      }
+      if (dsigma==dmI+1)
+      {
+        startingCones[size(startingCones)+1] = sigma;
+      }
     }
-    setring origin;
-    kill startingRing;
   }
+  return (startingCones);
 }
 
 static proc fakeParallelWaitAll(string command, list args)
@@ -485,7 +1096,6 @@ proc tropicalVarietyFull(ideal I, list #)
   //    - knownLinks: a list of signatures of codimension-one Groebner cones
   //        in the tropical variety whose adjacent maximal cones are guaranteed to be known
   //        this exists to avoid costly redundant computations
-  ~;
   if (!defined(startingCone))
   {
     decoratedGroebnerCone startingCone = tropicalStartingCone(I,symmetryGroup);

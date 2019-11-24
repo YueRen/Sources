@@ -52,20 +52,81 @@ static proc mod_init()
 }
 
 
-static proc candidateSet(list WW, list #)
+proc myGcd(def w)
+{
+  if (typeof(w)=="intvec")
+  {
+    int wGcd = w[1];
+    for (int i=size(w); i>1; i--)
+    {
+      wGcd = gcd(wGcd,w[i]);
+    }
+    return (wGcd);
+  }
+  if (typeof(w)=="list")
+  {
+    int wGcd = w[1];
+    for (int i=size(w); i>1; i--)
+    {
+      if (typeof(w[i])=="int")
+      {
+        wGcd = gcd(wGcd,w[i]);
+      }
+    }
+    return (wGcd);
+  }
+}
+
+
+static proc primitive(def w)
+{
+  if (typeof(w)=="intvec")
+  {
+    int wGcd = myGcd(w);
+    return (w div wGcd);
+  }
+  if (typeof(w)=="list")
+  {
+    int wGcd = myGcd(w);
+    return (listDiv(w,wGcd));
+  }
+}
+
+
+static proc listMult(list W, int m)
+{
+  for (int i=size(W); i>0; i--)
+  {
+    if (typeof(W[i])=="int")
+    {
+      W[i] = W[i]*m;
+    }
+  }
+  return (W);
+}
+
+
+static proc listDiv(list W, int m)
+{
+  for (int i=size(W); i>0; i--)
+  {
+    if (typeof(W[i])=="int")
+    {
+      W[i] = W[i] div m;
+    }
+  }
+  return (W);
+}
+
+
+proc candidateSet(list WW, list #)
 "USAGE:  candidateSet(list WW[, int originalCall]);
-ASSUME:  each entry of WW is a list incomplete rational vectors
-         with common support
+ASSUME:  each entry of WW is a list of incomplete homogenized intvecs
          originalCall = 1 by default, in recusive calls, originalCall will be set to 0
 RETURN:  list, a list of incomplete rational vectors projecting onto the WW[i]
 EXAMPLE: example candidateSet; shows an example
 "
 {
-  int originalCall = 1;
-  if(size(#) > 0)
-  {
-    originalCall = #[1];
-  }
   // construct candidate set recursively
   // ends if WW has only one entry.
   if(size(WW) == 1)
@@ -77,71 +138,57 @@ EXAMPLE: example candidateSet; shows an example
   list W1 = WW[1];
   list W2 = WW[2];
 
-  // 0: compute the common support of W1 and W2
-  //    and the difference in support between W2 and W1
+  // 0: compute the common and difference in support of W1 and W2
   int n = nvars(basering);
-  intvec commonSupport;
-  intvec differenceInSupport;
-  int kComm = 1;
-  int kDiff = 1;
-  for(int i = 1; i <= n; i++)
+  intvec commonSupport;       // = Supp(W1) \cap Supp(W2)
+  intvec differenceInSupport; // = Supp(W2) \setminus Supp(W1)
+  int kComm = 0; // = size(commonSupport)
+  int kDiff = 0; // = size(differenceInSupport)
+  for(int i = 1; i <= n+1; i++)
   {
-    if(typeof(W2[1][i]) != "none")
+    if(typeof(W2[1][i]) != "none")   // i in Supp(W2)?
     {
-      if(typeof(W1[1][i]) != "none")
+      if(typeof(W1[1][i]) != "none") // i in Supp(W1)?
       {
-        commonSupport[kComm] = i;
         kComm++;
+        commonSupport[kComm] = i;
       }
       else
       {
-        differenceInSupport[kDiff] = i;
         kDiff++;
+        differenceInSupport[kDiff] = i;
       }
     }
   }
 
   // 1: Merge W1 and W2
   list W12;
-  int k = 1;
-  intvec check1; // checks whether all points in W1 were used
-          // this check should only be carried out in the original call to
-          // "candidateSet", not in later recursive calls.
-  intvec check2; // checks whether all points in W2 were used
-  // Compare each entry w1 of W1
-  // with each entry w2 of W2
+  int k12 = 0;
   for(int i1 = 1; i1 <= size(W1); i1++)
   {
-    list w1 = W1[i1];
+    list w1 = W1[i1];   // for each w1 in W1
     for(int i2 = 1; i2 <= size(W2); i2++)
     {
-      list w2 = W2[i2];
-      // If w1 and w2 do not coincide on the common support
-      // skip this pair
-      if(kComm > 1)
-      {
-        if(w1[commonSupport] != w2[commonSupport])
+      list w2 = W2[i2]; // for each w2 in W2
+      if(kComm > 1)     // if w1 and w2 do not coincide on commonSupport
+      {                 //   skip this pair
+        if(primitive(w1[commonSupport])==primitive(w2[commonSupport]))
         {
-          i2++;continue;
+          i2++; continue;
         }
       }
-      // Merge w1 and w2
-      list w12 = w1;
-      if(kDiff > 1)
+      list w12 = w1;    // otherwise merge w1 and w2 into w12
+      if(kDiff > 0)
       {
+        int lcm12 = lcm(w1[1],w2[1]);
+        w12 = listMult(w1,lcm12 div w1[1]);
+        w2 = listMult(w2,lcm12 div w2[1]);
         w12[differenceInSupport] = w2[differenceInSupport];
+        w12 = primitive(w12);
       }
-      W12[k] = w12;
-      k++;
-      check1[i1] = 1;
-      check2[i2] = 1;
+      k12++;
+      W12[k12] = w12;
     }
-  }
-
-  if((originalCall && sum(check1) != size(W1)) || sum(check2) != size(W2))
-  {
-    print(WW);
-    ERROR("candidateSet: Incompatible input.");
   }
 
   WW = delete(WW,1);
@@ -151,41 +198,20 @@ EXAMPLE: example candidateSet; shows an example
 example
 {
   "EXAMPLE:"; echo = 2;
-  ring r = 0,x,dp;
-
+  ring r = 0,x(1..4),dp;
   def o;
-  list A1 = list(1,2,o,o,5,o),list(3,4,o,o,5,o);
-  list A2 = list(o,2,3,3,o,o),list(o,2,3,4,o,o),list(o,4,5,0,o,o);
-  list A3 = list(o,o,o,o,5,0),list(o,o,o,o,5,1);
+
+  list A1 = list(1,0,o,o,o),list(1,1,o,o,o),list(1,2,o,o,o),list(1,3,o,o,o);
+  list A2 = list(1,o,1,o,o),list(1,o,2,o,o),list(1,o,3,o,o),list(1,o,4,o,o);
+  list A3 = list(1,o,o,2,o),list(1,o,o,3,o),list(1,o,o,4,o),list(1,o,o,5,o);
   list A = A1,A2,A3;
   candidateSet(A);
-}
 
-static proc compareSupports(intvec a, intvec b)
-/* compares the supports of a and b
-   -1: supp(a)<supp(b)
-   0:  supp(a)=supp(b)
-   1:  supp(a)>supp(b)
-   any other value: otherwise */
-{
-  int returnNeg = 1;
-  int returnPos = 1;
-  for (int i=1; i<=size(a); i++)
-  {
-    if (a[i]==0 && b[i]!=0)
-    {
-      returnPos = 0;
-    }
-    if (a[i]!=0 && b[i]==0)
-    {
-      returnNeg = 0;
-    }
-  }
-  if (returnPos+returnNeg == 0)
-  {
-    return (42);
-  }
-  return (returnPos-returnNeg);
+  list B1 = list(1,0,o,o,o),list(1,1,o,o,o),list(1,2,o,o,o),list(1,3,o,o,o);
+  list B2 = list(2,o,1,o,o),list(3,o,2,o,o),list(4,o,3,o,o),list(5,o,4,o,o);
+  list B3 = list(3,o,o,2,o),list(4,o,o,3,o),list(5,o,o,4,o),list(6,o,o,5,o);
+  list B = B1,B2,B3;
+  candidateSet(B);
 }
 
 static proc doMerge(list workingList, ideal stdI, number uniformizingParameter, string eStrat, int useModular)
@@ -255,7 +281,7 @@ static proc doMerge(list workingList, ideal stdI, number uniformizingParameter, 
   // precompute all projections in parallel
   if(size(args) > 0)
   {
-    list outs = parallelWaitAll("tropicalProjection",args);
+    list outs = fakeParallelWaitAll("tropicalProjection",args);
   }
 
   // enumerate through the working list and look for merges to be done
@@ -412,9 +438,40 @@ static proc lexSmallestVariableIndex(poly g)
   return (-1);
 }
 
+static proc lcm(list #)
+{
+  if (size(#)==0)
+  {
+    ERROR("lcm: empty input");
+  }
+
+  if (typeof(#[1])=="intvec")
+  {
+    intvec w = #[1];
+    bigint P=w[1]; // product of all entries
+    int Q=w[1];    // gcd of all entries
+    for (int i=2; i<=size(w); i++)
+    {
+      P = P*w[i];
+      Q = gcd(Q,w[i]);
+    }
+    return (int(P div Q));
+  }
+  if (typeof(#[1])=="int")
+  {
+    intvec w = #[1..size(#)];
+    return (lcm(w));
+  }
+
+  ERROR("lcm: invalid input");
+}
+
 proc tropicalVarietyUnivariate(poly g, number uniformizingParameter)
 "USAGE:   tropicalVarietyUnivariate(poly g, number uniformizingParameter);
-RETURN:  list, the negative slopes of the Newton Polygon of g in ascending order
+RETURN:  list(intvec,intvec),
+         - the first intvec w represents the (homogenized) points in Trop(g),
+           i.e., if w = (u_0, ..., u_k) then Trop(g) = \{u_1/u_0, ..., u_k/u_0\}
+         - the second intvec contains the multiplicities of the points in Trop(g)
 ASSUME:  g univariate and at least binomial
 EXAMPLE: example tropicalVarietyUnivariate; shows an example
 "
@@ -428,51 +485,78 @@ EXAMPLE: example tropicalVarietyUnivariate; shows an example
   intmat M[k+1][3];
   for (int i=1; i<=k; i++)
   {
-    // (1, deg, val of coef)
+    // (1, deg, val)
     M[i,1] = 1;
     M[i,2] = deg(G[1,i]);
     M[i,3] = valuation(number(G[2,i]),uniformizingParameter);
   }
+  // unbounded in val direction
   M[k+1,1] = 0;
   M[k+1,2] = 0;
   M[k+1,3] = 1;
 
-  // 3. construct the Newton polygon and compute its facets and vertices
+  // 3. construct the homogenized Newton polygon and compute its facets / vertices
+  //    facets corresponds to one of three types
+  //    depending on the val entry of their (interior) normal vector
+  //    F[i,3] > 0  a bounded lower facet
+  //    F[i,3] = 0  one of two unbounded facets to each side
+  //    F[i,3] < 0  does not occur
   cone Delta = coneViaPoints(M);
-  bigintmat F = facets(Delta);
-  bigintmat R = rays(Delta);
+  intmat F = intmat(facets(Delta));
+  intmat V = intmat(rays(Delta));
 
-  // 4. return the slopes and multiplicities
-  list slopes;
-  list multiplicities;
-  number slope;
-  bigintmat eq[1][3];
-  cone edge;
-  bigintmat edgeVertices;
+  // 4. read off slopes and multiplicities
+
+  // 4.a extract slope enumerators and denominators
+  //      and compute the multiplicities
+  intvec slopesEnum;
+  intvec slopesDenom;
+  intvec multiplicities;
+  int kSlopes = 0;
   for (int i=nrows(F); i>0; i--)
   {
-    if (F[i,3]!=0) // if slope is finite
+    if (F[i,3]>0) // if edge is bounded
     {
-      slopes[size(slopes)+1] = number(F[i,2])/number(F[i,3]);
+      kSlopes++;
+      slopesEnum[kSlopes] = F[i,2];
+      slopesDenom[kSlopes] = F[i,3];
 
-      eq[1,1..3] = F[i,1..3];
-      edge = coneViaInequalities(F,eq);
-      edgeVertices = rays(edge);
-      multiplicities[size(multiplicities)+1] = absValue(int(edgeVertices[1,2]) - int(edgeVertices[2,2]));
+      // compute which vertices lie on the bounded edge
+      intvec edgeNormal = F[i,1..3];
+      intvec onEdge = V*edgeNormal;
+      list edgeDegrees;
+      for (int j=size(onEdge); j>0; j--)
+      {
+        if (onEdge[j]==0)
+        {
+          edgeDegrees[size(edgeDegrees)+1] = V[j,2];
+        }
+      }
+
+      multiplicities[kSlopes] = absValue(edgeDegrees[1]-edgeDegrees[2]);
     }
   }
 
-  // 5. sort slopes in ascending order and multiplities accordingly
-  list sorting = sort(slopes);
-  list slopesSorted = sorting[1];
-  intvec permSorted = sorting[2];
-  list multiplicitiesSorted;
-  for (int i=1; i<=size(slopesSorted); i++)
+  // 4.b construct the homogenized slopes
+  intvec slopes;
+  slopes[1] = lcm(slopesDenom);
+  for (int i=kSlopes; i>0; i--)
   {
-    multiplicitiesSorted[i] = multiplicities[permSorted[i]];
+    slopes[i+1] = slopesEnum[i] * (slopes[1] div slopesDenom[i]);
   }
 
-  return (list(slopesSorted,multiplicitiesSorted));
+  // 4.c sort slopes in ascending order and multiplities accordingly
+  list slopesUnsorted = slopes[2..kSlopes+1];
+  intvec multiplicitiesUnsorted = multiplicities;
+
+  list sortOut = sort(slopesUnsorted);
+  list sortList = sortOut[1];
+  intvec sortPerm = sortOut[2];
+
+  slopes = slopes[1],sortList[1..kSlopes];
+  multiplicities = multiplicities[sortPerm];
+
+  return (list(slopes,multiplicities));
 }
 example
 { "EXAMPLE:"; echo = 2;
@@ -485,151 +569,9 @@ example
   tropicalVarietyUnivariate(g,number(3));
 }
 
+// combines elements in workingList that are to be merged according to mStrat
 static proc pickMerge(list workingList, list mStrat)
-/* fuses elements in workingList that are to be merged
-   according to mStrat */
 {
-  if (typeof(mStrat[1])=="string")
-  {
-    if (mStrat[1] == "bestProjection")
-    {
-      // merges entries which require the smallest projections
-      int numberOfMerges = getcores();
-      if(size(#) > 0)
-      {
-        numberOfMerges = #[1];
-      }
-
-      // Step 1: scan all entries for their support
-      int workingListSize = size(workingList);
-      int n = nvars(basering);
-      list workingListSupports;
-      for (int i=1; i<=workingListSize; i++)
-      {
-        list w = workingList[i][1][1];
-        intvec workingListSupport;
-        for (int j=1; j<=n; j++)
-        {
-          if (typeof(w[j])=="number")
-          {
-            workingListSupport[j] = 1;
-          }
-          else
-          {
-            workingListSupport[j] = 0;
-          }
-        }
-        workingListSupports[i] = workingListSupport;
-      }
-
-      // Step 2: iterate over all pairs of workingList entries and
-      //  create the union of their supports;
-      list unifiedSupports;
-      int unifiedSupportsSize = 0;
-      for (int i=1; i<workingListSize; i++)
-      {
-        for (int j=i+1; j<=workingListSize; j++)
-        {
-          intvec unifiedSupport = workingListSupports[i]+workingListSupports[j];
-
-          for (int k=1; k<=unifiedSupportsSize; k++)
-          {
-            int b = compareSupports(unifiedSupports[k],unifiedSupport);
-            if (b==0 || b==1)
-            { // unifiedSupports[k] >= unifiedSupport component-wise
-              break;
-            }
-            if (b==-1)
-            { // unifiedSupports[k] <= unifiedSupport component-wise and
-              // unifiedSupports[k] != unifiedSupport
-              unifiedSupportsSize--;
-              unifiedSupports = delete(unifiedSupports,k);
-              continue; // WARNING: does not increment k!!!
-            }
-          }
-          if (k>unifiedSupportsSize)
-          {
-            unifiedSupportsSize++;
-            unifiedSupports[unifiedSupportsSize] = unifiedSupport;
-          }
-        }
-      }
-
-      numberOfMerges = min(numberOfMerges,size(unifiedSupports));
-
-      // Step 3: create list of all workingList entries
-      //   contained in each unified support
-      list possibleMergesPointsOnly;
-      list possibleMerges;
-      list possibleMergesIndices;
-      for (int i=1; i<=unifiedSupportsSize; i++)
-      {
-        list possibleMergePointsOnly;
-        list possibleMerge;
-        intvec possibleMergeIndices;
-        for (int j=1; j<=workingListSize; j++)
-        {
-          int b = compareSupports(workingListSupports[j],unifiedSupports[i]);
-          if (b==-1)
-          {
-            possibleMergePointsOnly[size(possibleMergePointsOnly)+1] = workingList[j][1];
-            possibleMerge[size(possibleMerge)+1] = workingList[j];
-            possibleMergeIndices[j] = 1;
-          }
-          if (b==0 || b==1)
-          {
-            ERROR("workingList has invalid or redundant entries");
-          }
-        }
-        possibleMergesPointsOnly[i] = possibleMergePointsOnly;
-        possibleMerges[i] = possibleMerge;
-        possibleMergesIndices[i] = possibleMergeIndices;
-      }
-
-      // Step 4: iterate through all possible merges and compute the smallest projections
-      list candidateSets;
-      list projections;
-      intvec projectionNorms;
-      for (int i=1; i<=size(possibleMerges); i++)
-      {
-        candidateSets[i] = candidateSet(possibleMergesPointsOnly[i]);
-        projections[i] = smallestFeasibleProjection(candidateSets[i]);
-        projectionNorms[i] = sum(projections[i]);
-      }
-
-      // Step 5: isolate the numberOfMerges smallest projections
-      //   and add them to the new working list
-      //   construct the union of all their support
-      intvec sortedProjectionIndices = sort(projectionNorms)[2];
-      list newWorkingList;
-      intvec coveredSupport;
-      coveredSupport[size(workingList)] = 0;
-      for (int i=1; i<=numberOfMerges; i++)
-      {
-        list newWorkingListEntry;
-        int ii = sortedProjectionIndices[i];
-        newWorkingListEntry[1] = projections[ii];
-        newWorkingListEntry[2] = candidateSets[ii];
-        newWorkingListEntry[3] = possibleMerges[ii];
-        newWorkingList[i] = newWorkingListEntry;
-        coveredSupport = coveredSupport+possibleMergesIndices[ii];
-      }
-
-      // Step 6: add old working list entries with unaccounted supports
-      //   to new working list
-      for (int i=1; i<=size(workingList); i++)
-      {
-        if (coveredSupport[i]==0)
-        {
-          newWorkingList[size(newWorkingList)+1] = workingList[i];
-        }
-      }
-      return (newWorkingList);
-    }
-
-    ERROR("pickMerge: no valid merging strategy specified.");
-  }
-
   list newWorkingList;
   for(int i=1; i<=size(mStrat); i++)
   {
@@ -656,7 +598,6 @@ static proc pickMerge(list workingList, list mStrat)
     newWorkingList[size(newWorkingList)+1] = mergedEntry;
   }
 
-  // mStrat = delete(mStrat,1); // why won't this work??
   return(newWorkingList);
 }
 
@@ -691,76 +632,104 @@ example
   pointsOfNormOfLength(3,4);
 }
 
-static proc smallestFeasibleProjection(list P)
-"USAGE:  smallestFeasibleProjection(list P);
-ASSUME:  P list of incomplete vectors of rational numbers
-RETURN:  intvec u, an in l1-norm minimal u which is injective on P
+proc smallestFeasibleProjection(list candidates)
+"USAGE:  smallestFeasibleProjection(list candidates);
+ASSUME:  candidates, a list of incomplete homogenized intvecs with common support
+RETURN:  intvec u,
+           - of the form (*,...,*,-1,*,...,*) with *>=0
+           - with same support as the dehomogenized candidates
+           - such that w |-> u*w is injective on the dehomogenized candidates
+           - minimal in the l1 norm
 EXAMPLE: smallestFeasibleProjection; shows an example
 "
 {
+  // 0: identify the support of candidateSet and compress the candidateSet
   intvec support;
-  int kSupp = 1;
-  for(int i = 1; i <= size(P[1]); i++)
+  int kSupp = 0;
+  list candidate = candidates[1];
+  for (int i=1; i<=size(candidate); i++)
   {
-    if(typeof(P[1][i]) != "none")
+    if (typeof(candidate[i])!="none")
     {
-      support[kSupp] = i;
       kSupp++;
+      support[kSupp] = i;
     }
   }
 
-  list T;
-  for(int i = 1; i <= size(P); i++)
+  intmat candidatesCompressed[size(candidates)][kSupp];
+  for(int i=1; i<=size(candidates); i++)
   {
-    list Pi = P[i];
-    matrix Ti[1][size(support)] = Pi[support];
-    T[i] = Ti;
+    list wList = candidates[i];
+    intvec wCompressed = wList[support];
+    candidatesCompressed[i,1..kSupp] = wCompressed;
   }
 
-  int l1Norm = 0;
-  while(1)
+  // 1.0 iterate over an increasing l1Norm
+  for (int l1Norm=0; 1; l1Norm++)
   {
-    list U = sortBySupport(pointsOfNormOfLength(l1Norm,size(support)-1));
+    // 1.1 construct all points of length kSupp-2 with the current l1Norm
+    //       one decrement for the homogenizing entry
+    //       one decrement for the -1 entry
+    list U = sortBySupport(pointsOfNormOfLength(l1Norm,kSupp-2));
 
-    for(int i = 1; i <= size(support); i++)
+    // 1.2 iterate over all possible positions for the -1 entry
+    //       (i = insert -1 at position i)
+    for (int i=1; i<=kSupp; i++)
     {
-      if (support[i]==nvars(basering))
+      if (support[i]==1 || support[i]==nvars(basering))
       {
-        break;
+        // first entry is reserved for homogeneity
+        // last entry is reserved for shape position
+        i++; continue;
       }
-      for(int j = 1; j <= size(U); j++)
+      for (int j=1; j<=size(U); j++)
       {
         intvec u;
-        intvec Uj = U[j];
-        if(i > 1)
-        {
-          u = Uj[1..i-1];
-        }
+        u[1] = 1;
         u[i] = -1;
-        if(i < size(support))
+
+        intvec Uj = U[j];
+        if (i>2)
         {
-          u = u,Uj[i..size(support)-1];
+          u[2..i-1] = Uj[1..i-2];
         }
-        //test injectivity:
-        if(testInjectivity(T,u))
+        if (i<kSupp)
         {
-          //found injective map!
+          u[i+1..kSupp] = Uj[i-1..kSupp-2];
+        }
+        u;
+
+        if(isInjective(candidatesCompresseed,u))
+        {
+          // if injective decompress u and return it
           intvec uResult;
           uResult[nvars(basering)] = 0;
           uResult[support] = u;
-          return(uResult);
+          return (uResult);
         }
       }
     }
-    l1Norm++;
   }
 }
 example
 {
-  echo = 2;
-  ring r = 0,(x,y),dp;
-  list P = list(0,0),list(0,1),list(0,2),list(1,0),list(1,1),list(1,2);
-  smallestFeasibleProjection(P);
+  "EXAMPLE:"; echo = 2;
+  ring r = 0,x(1..4),dp;
+  def o;
+
+  list A1 = list(1,0,o,o,o),list(1,1,o,o,o),list(1,2,o,o,o),list(1,3,o,o,o);
+  list A2 = list(1,o,1,o,o),list(1,o,2,o,o),list(1,o,3,o,o),list(1,o,4,o,o);
+  list A3 = list(1,o,o,2,o),list(1,o,o,3,o),list(1,o,o,4,o),list(1,o,o,5,o);
+  list A = A1,A2,A3;
+  list cs = candidateSet(A);
+  smallestFeasibleProjection(cs);
+
+  list B1 = list(1,0,o,o,o),list(1,1,o,o,o),list(1,2,o,o,o),list(1,3,o,o,o);
+  list B2 = list(2,o,1,o,o),list(3,o,2,o,o),list(4,o,3,o,o),list(5,o,4,o,o);
+  list B3 = list(3,o,o,2,o),list(4,o,o,3,o),list(5,o,o,4,o),list(6,o,o,5,o);
+  list B = B1,B2,B3;
+  list cs = candidateSet(B);
+  smallestFeasibleProjection(cs);
 }
 
 static proc sortBySupport(list P)
@@ -791,22 +760,32 @@ static proc sortBySupport(list P)
   return(Psorted);
 }
 
-static proc testInjectivity(list cs, intvec u)
-/* tests whether w |-> u*w is injective on cs */
+// tests whether w |-> u*w is injective on the rows of candidateMatrix
+// NOTE: rows of candidateMatrix are HOMOGENIZED vectors, i.e.
+//         ncols(candidateMatrix) == size(u)+1
+static proc isInjective(intmat candidateMatrix, intvec u)
 {
-  list csImages;
-  for(int k = 1; k <= size(cs); k++)
+  intmat uTranspose = transpose(u);
+  int r = nrows(candidateMatrix);
+  int c = ncols(candidateMatrix);
+
+  list candidateProjections;
+  for (int i=1; i<=r; i++)
   {
-    matrix csImage = cs[k]*u;
-    for(int i = 1; i <= size(csImages); i++)
+    intvec candidateProjection;
+    candidateProjection[1] = candidateMatrix[i,1];
+    candidateProjection[2] = uTranspose*intvec(candidateMatrix[i,2..c]);
+    candidateProjections[i] = primitive(candidateProjection);
+
+    for (int j=1; j<i; j++)
     {
-      if(csImages[i] == csImage)
+      if (candidateProjections[j] == candidateProjections[i])
       {
-        return(0);
+        return (0);
       }
     }
-    csImages[size(csImages)+1] = csImage;
   }
+
   return(1);
 }
 
@@ -922,6 +901,7 @@ EXAMPLE: tropicalProjection, shows an example
     setring rOrigin;
     ideal stdI = imap(rTropicalProjection,stdI);
     poly eliminant = stdI[1];
+
     list TM = tropicalVarietyUnivariate(eliminant,uniformizingParameter);
     return (list(TM,stdI));
   }
@@ -991,6 +971,7 @@ EXAMPLE: tropicalProjection, shows an example
 
   setring rOrigin;
   poly eliminant = imap(rBivariate,eliminant);
+
   list TM = tropicalVarietyUnivariate(eliminant,uniformizingParameter);
   return (list(TM,ideal(eliminant)));
 }
@@ -1108,7 +1089,7 @@ proc tropicalVarietyViaProjection(ideal stdI, number uniformizingParameter, list
 ASSUME:  stdI reduced Groebner basis (in current ordering), assumed to be of shape form in lp ordering
 NOTE:    for a list of viable eliminantStrat, see binaryEliminant
 RETURN:  list, the zero-dimensional tropical variety of stdI
-EXAMPLE: tropicalVarietyViaProjection; shows an example
+EXAMPLE: example tropicalVarietyViaProjection; shows an example
 "
 {
   // 0. parse optional parameter and test for sanity
@@ -1171,7 +1152,8 @@ EXAMPLE: tropicalVarietyViaProjection; shows an example
       ideal IBvar = stdI[n-i+1],stdI[1];
       args[i] = list(IBvar,eStrat,useModular);
     }
-    list out = parallelWaitAll("binaryEliminant",args);
+    list out = fakeParallelWaitAll("binaryEliminant",args);
+    ERROR("todo");
 
     list WM;
     WM[n] = tropicalVarietyUnivariate(stdI[1],uniformizingParameter);
@@ -1188,8 +1170,7 @@ EXAMPLE: tropicalVarietyViaProjection; shows an example
     {
       args[i] = list(stdI,-unitVector(n,i),uniformizingParameter,"fglm",useModular);
     }
-    list out = parallelWaitAll("tropicalProjection",args);
-
+    list out = fakeParallelWaitAll("tropicalProjection",args);
     // read off all tropical projections
     list WM;
     for (int i=1; i<=size(out); i++)
@@ -1225,7 +1206,7 @@ EXAMPLE: tropicalVarietyViaProjection; shows an example
       {
         // if found, transfer all projections into this lexicographical ring
         // and break with the current ring active
-        list WM = fetch(rOrigin,WM);
+        // list WM = fetch(rOrigin,WM);
         break;
       }
     }
@@ -1240,9 +1221,8 @@ EXAMPLE: tropicalVarietyViaProjection; shows an example
   // the workingList can be in two states:
   // STATE 1: before calling pickMerge
   //   each entry is a tuple (list T, list M), where
-  //     T = incomplete rational vectors
-  //         describing the projetion of Trop(I)
-  //         onto their common support
+  //     T = incomplete homogenized intvecs
+  //         describing the projetions of Trop(I)
   //     M = list of multiplicities
 
   // STATE 2: after calling pickMerge,
@@ -1257,15 +1237,17 @@ EXAMPLE: tropicalVarietyViaProjection; shows an example
   list workingList;
   for (int i=1; i<=n; i++)
   {
-    list Lambda;
-    for(int j = 1; j <= size(WM[i][1]); j++)
+    list Lambda; // projection onto i-th coordinate
+    for(int j = 2; j <= size(WM[i][1]); j++)
     {
-      list lambda;
-      lambda[i] = WM[i][1][j];
-      Lambda[j] = lambda;
+      list lambda; // projected point
+      lambda[1] = WM[i][1][1];   // homogenization entry
+      lambda[i+1] = WM[i][1][j];
+      Lambda[j-1] = lambda;
     }
     workingList[i] = list(Lambda,WM[i][2]);
   }
+  ~;
 
   // END: STATE 1 with size(workingList)==1
   int tPickTotal = 0;
@@ -1314,6 +1296,8 @@ EXAMPLE: tropicalVarietyViaProjection; shows an example
 example
 {
   "EXAMPLE:"; echo = 2;
+
+  // tropical varieties over p-adic numbers
   ring r = 0,(x,y,z,w),dp;
   number uniformizingParameter = 2;
   ideal I =
@@ -1321,6 +1305,32 @@ example
     y-2x,
     z-2y,
     w-2z;
+  ideal stdI = std(I);
+  list TropI = tropicalVarietyViaProjection(stdI,uniformizingParameter,mergeStrat("sequential"),"minpoly",0,0);
+  print(TropI[1]);
+  print(TropI[2]);
+
+  // tropical varieties over Puiseux series (char=0)
+  ring r = (0,t),(x,y,z,w),dp;
+  number uniformizingParameter = t;
+  ideal I =
+    (x-1)*(x-t)*(x-t2)*(x-3t)*(x-t3)
+    y-tx,
+    z-ty,
+    w-tz;
+  ideal stdI = std(I);
+  list TropI = tropicalVarietyViaProjection(stdI,uniformizingParameter,mergeStrat("sequential"),"minpoly",0,0);
+  print(TropI[1]);
+  print(TropI[2]);
+
+  // tropical varieties over Puiseux series (char>0)
+  ring r = (7,t),(x,y,z,w),dp;
+  number uniformizingParameter = t;
+  ideal I =
+    (x-1)*(x-t)*(x-t2)*(x-3t)*(x-t3)
+    y-tx,
+    z-ty,
+    w-tz;
   ideal stdI = std(I);
   list TropI = tropicalVarietyViaProjection(stdI,uniformizingParameter,mergeStrat("sequential"),"minpoly",0,0);
   print(TropI[1]);

@@ -86,22 +86,13 @@ static proc tropicalizeMonomials(ideal F, number uniformizingParameter)
 }
 
 // merges two lists of tropical points with multiplicities
-static proc mergeWM(list globalWM, list localWM)
+static proc mergeMultisets(list globalWM, list localWM)
 {
   matrix globalW = globalWM[1];
   intvec globalM = globalWM[2];
   matrix localW = localWM[1];
   intvec localM = localWM[2];
   int n = ncols(globalW);
-  // "=================================";
-  // "In globalW";
-  // print(globalW);
-  // "In globalM";
-  // globalM;
-  // "In localW";
-  // print(localW);
-  // "In localM";
-  // localM;
 
   for (int i=nrows(localW); i>0; i--)
   {
@@ -153,10 +144,6 @@ static proc mergeWM(list globalWM, list localWM)
       }
     }
   }
-  // "Out globalW";
-  // print(globalW);
-  // "Out globalM";
-  // globalM;
   return (list(globalW,globalM));
 }
 example
@@ -178,7 +165,7 @@ example
     0,1,1,
     1,0,1;
   intvec localM = 9,8,7,6,5;
-  list mergedWM = mergeWM(list(globalW,globalM),list(localW,localM));
+  list mergedWM = mergeMultisets(list(globalW,globalM),list(localW,localM));
   print(mergedWM[1]);
   mergedWM[2];
 }
@@ -327,7 +314,7 @@ EXAMPLE: example tropicalVarietyZerodimensional; shows an example
   list globalWM = triangularDecompositionWM[size(triangularDecomposition)];
   for (int i=size(triangularDecomposition)-1; i>0; i--)
   {
-    globalWM = mergeWM(globalWM,triangularDecompositionWM[i]);
+    globalWM = mergeMultisets(globalWM,triangularDecompositionWM[i]);
   }
 
   setring rOrigin;
@@ -376,28 +363,83 @@ example
 
 proc computeUnmixedInitialIdeal(ideal uI, number uniformizingParameter, intvec w)
 {
+  // rather than computing the unmixed initial ideal straight up
+  // it is often faster to compute an initial ideal over the coefficient field
+  // with respect to the weight vector first (indep. of any valuation)
   def rOrigin = basering;
   int n = nvars(basering);
+
   intvec wPre = -onesVector(n);
   wPre[1] = 0;
   execute("ring rInitial = ("+charstr(rOrigin)+"),("+varstr(rOrigin)+"),(a(wPre),a(w),rp);");
   option(prot);
-  ideal uI = groebner(fetch(rOrigin,uI));
+  ideal uI = fetch(rOrigin,uI);
+  uI = groebner(uI);
   option(noprot);
   number uniformizingParameter = fetch(rOrigin,uniformizingParameter);
 
   option(infRedTail);
-  uI = interred(uI); // terminates as valuation decreases
-                     // if degree increases
-                     // uI is homogeneous in x and contains p-t
+  uI = uniformizingParameter-var(1), simplify(reduce(uI,uniformizingParameter-t),2);
+                        // terminates as valuation decreases
+                        // if (absolute) degree increases
+                        // uI is homogeneous in x and contains p-t
   option(noinfRedTail);
   ideal inI = initial(uI,w);
-  ~;
   export(rInitial);
   export(uI);
   export(uniformizingParameter);
   export(inI);
   return (rInitial);
+}
+
+
+static proc mergeRays(list A, list B)
+{
+  list AB;
+}
+
+
+/***
+ * Given a reduced Groebner basis of an initial ideal
+ * with respect to a weight on a codimension one tropical cone and the uniformizing parameter,
+ * compute the link around the cone
+ */
+proc tropicalLink(ideal inIu, number uniformizingParameter)
+{
+  def rUnmixed = basering;
+
+  // 1. inIu has a codimension one lineality space
+  //    reduce to dimension one by removing it
+  inIu = dissectLinealitySpace(inIu);
+
+  // 2. reduce to multiple dimension zeroes
+  //    by intersecting it with the sides of a box
+  def rResidue = residueTropicalPolynomialData(inIu, uniformizingParameter);
+  setring rResidue;
+
+  ideal inIr = Ir;
+  list rayGenerators;
+  for (int sign=1; sign>=-1; sign = sign-2)
+  {
+    for (int i=nvars(basering); i>0; i--)
+    {
+      ideal inIcut = inIr,var(i)-uniformizingParameter^(sign);
+      inIcut = satstd(inIcut);
+
+      if (dim(inIcut)==-1)
+      {
+        // no tropical intersection points here
+        i++;
+        continue;
+      }
+
+      list WM = tropicalVarietyZerodimensional(inIcut,uniformizingParameter);
+      list W = WM[1];
+      rayGenerators = mergeRays(rayGenerators,primitive(W));
+    }
+  }
+
+  return (rayGenerators);
 }
 
 
@@ -443,6 +485,8 @@ proc groebnerConeFromIdeals(ideal I, ideal inI)
 
 proc computeDecoratedGroebnerConeFromWeight(ideal uI, number uniformizingParameter, intvec w, list symmetryGroup)
 {
+  def rUnmixed = basering;
+
   def rSigma = computeUnmixedInitialIdeal(uI, uniformizingParameter, w);
   setring rSigma;
   cone CwI = groebnerConeFromIdeals(uI,inI);
@@ -454,6 +498,8 @@ proc computeDecoratedGroebnerConeFromWeight(ideal uI, number uniformizingParamet
   sigma.polynomialIdeal = uI;
   sigma.initialIdeal = inI;
   sigma.uniformizingParameter = uniformizingParameter;
+
+  setring rUnmixed;
   return (sigma);
 }
 
@@ -642,7 +688,7 @@ static proc bigintmatToIntvec(bigintmat uniquePointBigintmat)
  *   - (cone) an adjacent maximal tropical Groebner cone
  *   - (bigintmat) the signature of the adjacent Groebner cone
  **/
-proc tropicalTraversalPartialIterationStep(ideal I, bigintmat interiorFacetPoint, alias list symmetryGroup)
+proc tropicalNeighboursLink(ideal I, bigintmat interiorFacetPoint, alias list symmetryGroup)
 {
   def origin = basering;
   list TIw;
@@ -701,9 +747,9 @@ proc tropicalTraversalPartialIterationStep(ideal I, bigintmat interiorFacetPoint
   return (TIw);
 }
 
-proc tropicalTraversalStep(decoratedGroebnerCone coneInWorkingList, list knownCones, list knownLinks, list symmetryGroup)
+proc tropicalNeighboursCone(decoratedGroebnerCone coneInWorkingList, list knownCones, list knownLinks, list symmetryGroup)
 {
-  // 0. Parse data in workinListItem
+  // 0. Parse data in coneInWorkingList
   cone C = coneInWorkingList.polyhedralCone;
   def originTropicalTraversalStep = coneInWorkingList.polynomialRing;
   setring originTropicalTraversalStep;
@@ -711,27 +757,27 @@ proc tropicalTraversalStep(decoratedGroebnerCone coneInWorkingList, list knownCo
   number uniformizingParameter = coneInWorkingList.uniformizingParameter;
   export(uniformizingParameter);
 
-  // 1.a. Compute a unique points in each facet and their signatures
-  list uniqueFacetPoints = bigintmatToListOfBigintmats(uniquePointsOfFacets(C));
-  list newLinks;
-  for (int i=1; i<=size(uniqueFacetPoints); i++)
+  // 1.a. Compute a unique point in each facet and their signatures
+  list facetPoints = bigintmatToListOfBigintmats(uniquePointsOfFacets(C));
+  list facetSignatures;
+  for (int i=1; i<=size(facetPoints); i++)
   {
-    newLinks[i] = minimalRepresentative(uniqueFacetPoints[i],symmetryGroup);
+    facetSignatures[i] = minimalRepresentative(facetPoints[i],symmetryGroup);
   }
 
-  // 1.b. Sort newLinks and the unique points according to it.
-  newLinks,uniqueFacetPoints = listOfBigintmatSort(newLinks,uniqueFacetPoints);
+  // 1.b. Sort facetSignatures and change facetPoints accordingly
+  facetSignatures,facetPoints = listOfBigintmatSort(facetSignatures,facetPoints);
 
   // 1.c. Find the insertion points of the signatures
-  //        and delete those which are redundant, as well as their unique points
-  list newLinksInsertionPoints;
-  newLinksInsertionPoints,newLinks,uniqueFacetPoints = findInsertionPoints(knownLinks,newLinks,uniqueFacetPoints);
+  //        and delete those which are redundant, as well as the points
+  list facetSignaturesInsertionPoints;
+  facetSignaturesInsertionPoints,facetSignatures,facetPoints = findInsertionPoints(knownLinks,facetSignatures,facetPoints);
 
   // 2. Compute tropical neighbours for each remaining facet
   list neighbouringCones;
-  for (i=1; i<=size(uniqueFacetPoints); i++)
+  for (i=1; i<=size(facetPoints); i++)
   {
-    neighbouringCones = neighbouringCones + tropicalTraversalPartialIterationStep(stdI,uniqueFacetPoints[i],symmetryGroup);
+    neighbouringCones = neighbouringCones + tropicalNeighboursLink(stdI,facetPoints[i],symmetryGroup);
   }
 
   // 3.a Read out newCones, sort them and neighouringCones accordingly.
@@ -747,7 +793,7 @@ proc tropicalTraversalStep(decoratedGroebnerCone coneInWorkingList, list knownCo
   list newConesInsertionPoints;
   newConesInsertionPoints,newCones,neighbouringCones = findInsertionPoints(knownCones,newCones,neighbouringCones);
 
-  return(list(neighbouringCones,newCones,newConesInsertionPoints,newLinks,newLinksInsertionPoints));
+  return(list(neighbouringCones,newCones,newConesInsertionPoints,facetSignatures,facetSignaturesInsertionPoints));
 }
 
 proc naRandomNumber(number uniformizingParameter, int cval, list #)
@@ -872,7 +918,7 @@ RETURN:  ideal stdIL, such that Trop(stdIL) = Trop(stdI) \cap H
   {
     if (p[i]==1)
     {
-      L[size(L)+1] = poly(var(i)-1);
+      L[size(L)+1] = var(i)-1;
     }
   }
 
@@ -946,35 +992,73 @@ EXAMPLE: example tropicalPoints; shows an example
 
   // 2: compute zerodimensional tropical variety
   list WM = tropicalVarietyZerodimensional(IL0,uniformizingParameter);
-  return(list(-WM[1],WM[2]));
+  return(list(WM[1],WM[2]));
 }
 
-proc mixCharacteristics(ideal uI, number uniformizingParameter)
+proc mixCharacteristics(ideal uI, number uniformizingParameter, list #)
+"USAGE:  mixCharacteristics(ideal uI, number uniformizingParameter[, intvec w, intvec u]);
+RETURN:  a ring with mixed characteristics and monomial ordering:
+         - dp, if u and v unspecified
+         - a(1,...,1), a(u), rp, if only u specified
+         - a(1,...,1), a(u), a(v), rp, if u and v specified
+         inside the ring, an ideal mI and a number uniformizingParameter are defined
+EXAMPLE: example tropicalPoints; shows an example
+"
 {
+  // 0: parse optional parameters, save basering
+  //    and construct its ringlist
+  intvec u;
+  if (size(#)>0)
+  {
+    u = #[1];
+  }
+  intvec v;
+  if (size(#)>1)
+  {
+    u = #[2];
+  }
+
   def rOrigin = basering;
   int n = nvars(basering);
+  list rlOrigin = ringlist(basering);
 
-  string xString;
-  for (int i=2; i<=n; i++)
+  // 1: create variable string for the mixed ring
+  list varList = rlOrigin[2];
+  string varString = "("+string(list(varList[2..n]))+")";
+
+  // 2: create ordering string for the mixed ring
+  intvec allOnes = onesVector(n-1);
+  string ordString = "(a(allOnes)";
+  if (size(u)>1)
   {
-    xString = xString+varstr(rOrigin,i)+",";
+    ordString = ortString+",a(u)";
   }
-  xString = xString[1..size(xString)-1];
+  if (size(v)>1)
+  {
+    ordString = ortString+",a(v)";
+  }
+  ordString = ordString+",rp)";
 
+  // 3: create char string for the mixed ring
+  string charString;
   if (pardeg(uniformizingParameter)>0)
   {
     ERROR("mixCharacteristics: Puiseux case not implemented yet"); // todo
   }
   else
   {
-    execute("ring rMixed = 0,("+xString+"),dp;");
-    number uniformizingParameter = fetch(rOrigin,uniformizingParameter);
-    map phiMixed = rOrigin,uniformizingParameter,maxideal(1);
-    ideal mI = phiMixed(uI);
-    export(mI);
-    export(uniformizingParameter);
-    return (rMixed);
+    charString = "(0)";
   }
+
+  // 4: create mixed ring and export data to be saved
+  execute("ring rMixed = "+charString+","+varString+","+ordString+";");
+
+  number uniformizingParameter = fetch(rOrigin,uniformizingParameter);
+  map phiMixed = rOrigin,uniformizingParameter,maxideal(1);
+  ideal mI = phiMixed(uI);
+  export(mI);
+  export(uniformizingParameter);
+  return (rMixed);
 }
 
 proc tropicalStartingCones(ideal uI, number uniformizingParameter, list #)
@@ -1011,7 +1095,7 @@ TODO:    One can reuse the initial ideals of the lower-dimensional points
     setring rMixed;
     list WM = tropicalPoints(mI,uniformizingParameter,32+6*iterationNumber);
     intmat W = homogenizeMatrix(WM[1]);
-    ~;
+
     // 2. compute the Groebner cone around each tropical point
     setring rOrigin;
     string command = "computeDecoratedGroebnerConeFromWeight";
@@ -1041,7 +1125,7 @@ TODO:    One can reuse the initial ideals of the lower-dimensional points
   return (startingCones);
 }
 
-static proc fakeParallelWaitAll(string command, list args)
+proc fakeParallelWaitAll(string command, list args)
 {
   list out;
   for (int i=1; i<=size(args); i++)
@@ -1063,49 +1147,75 @@ static proc isIthInsertionPointMinimal(alias list newConesInsertionPoints, int i
   return (0);
 }
 
-proc tropicalVarietyFull(ideal I, list #)
+static proc unmixTropicalVarietyInput(ideal I, number uniformizingParameter, list symmetryGroup)
 {
-  // 0. Save original ring and read in symmetry group
-  def origin = basering;
-  list symmetryGroup;
-  while (size(#) > 0)
-  {
-    if (typeof(#[1])=="list")
-    {
-      symmetryGroup = #[1];
-    }
-    if (typeof(#[1])=="decoratedGroebnerCone")
-    {
-      decoratedGroebnerCone startingCone = #[1];
-    }
-    # = delete(#,1);
+  def rOrigin = basering;
+
+  if (pardeg(uniformizingParameter)>0)
+  { // unmixed characteristics case
+    string charStr = "("+string(char(rOrigin))+")";
+    string varStr = "("+parstr(1)+","+varstr(basering)+")";
+
+    execute("ring rUnmixed ="+charStr+","+varStr+",dp;");
+    number uniformizingParameter = fetch(r,uniformizingParameter);
+    ideal Iu = uniformizingParameter-var(1),imap(r,I);
+
+    export(rUnmixed);
+    export(Iu);
+    export(uniformizingParameter);
+    return (rUnmixed);
   }
 
-  // 1. Compute a starting cone and initialize traversal data:
-  //    - finishedList: a list of list, each element consists of
-  //        [1]: (ring) contains GB of the original and the initial ideal
-  //        [2]: (cone) maximal Groebner cone in the tropical variety
-  //        [3]: (bigintmat) the signature of the Groebner cone
-  //    - workingList: a list of list, each element consists of
-  //        [1]: (ring) contains GB of the original and the initial ideal
-  //        [2]: (cone) maximal Groebner cone in the tropical variety
-  //        [3]: (bigintmat) the signature of the Groebner cone
-  //    - knownCones: a list of signatures of maximal Groebner cones
-  //        in the tropical variety
+  if (prime(int(uniformizingParameter))==int(uniformizingParameter)) // prime returns smallest prime >= p
+  {
+    string charStr = "(integer)";
+    for (int i=1; i<=nvars(rOrigin); i++)
+    {
+      if (varstr(i)=="t")
+      {
+        ERROR("unmixTropicalVarietyInput: variable name t reserved for uniformizing variable");
+      }
+    }
+    string varStr = "(t,"+varstr(basering)+")";
+
+    execute("ring rUnmixed ="+charStr+","+varStr+",dp;");
+    number uniformizingParameter = fetch(r,uniformizingParameter);
+    ideal uI = uniformizingParameter-var(1),imap(r,I);
+
+    export(rUnmixed);
+    export(uI);
+    export(uniformizingParameter);
+    return (rUnmixed);
+  }
+
+  ERROR("unmixTropicalVarietyInput: invalid uniformizingParameter");
+}
+
+// computes the tropical variety of a homogeneous prime ideal
+proc tropicalVarietyCore(ideal I, number uniformizingParameter, list symmetryGroup)
+{
+  // 0. Save original ring and read in symmetry group
+  def rMixed = basering;
+
+  // 1. Unmix the ideal and compute the starting cone
+  def rUnmixed = unmixTropicalVarietyInput(I,uniformizingParameter,symmetryGroup);
+  setring rUnmixed;
+  list startingCones = tropicalStartingCones(uI,uniformizingParameter,symmetryGroup);
+
+  // 2.0 Initialize traversal data:
+  //    - finishedList: a list of decoratedGroebnerCones, for whom all neighbours are known
+  //    - workingList: a list of decoratedGroebnerCones, for whom not all neighbours are known
+  //    - knownCones: a list of signatures of maximal Groebner cones in the tropical variety
   //        this exists to efficiently check whether a newly computed cone is already known
   //    - knownLinks: a list of signatures of codimension-one Groebner cones
   //        in the tropical variety whose adjacent maximal cones are guaranteed to be known
   //        this exists to avoid costly redundant computations
-  if (!defined(startingCone))
-  {
-    decoratedGroebnerCone startingCone = tropicalStartingCone(I,symmetryGroup);
-  }
   list finishedList;
-  list workingList = startingCone;
+  list workingList = startingCones;
   list knownCones = startingCone.orbitIdentifier;
   list knownLinks;
 
-  string command = "tropicalTraversalStep";
+  string command = "tropicalNeighboursCone";
   list args;
   list out;
   int maximalLoad = getcores();
@@ -1128,7 +1238,7 @@ proc tropicalVarietyFull(ideal I, list #)
 
   while (size(workingList)>0)
   {
-    // 2.a. Prepare up to maximalLaod inputs for tropicalTraversalStep,
+    // 2.a. Prepare up to maximalLaod inputs for tropicalNeighboursCone,
     //        add them to the finished list and delete them from the working list
     currentLoad = min(maximalLoad,size(workingList));
     args = list();
@@ -1139,10 +1249,10 @@ proc tropicalVarietyFull(ideal I, list #)
       workingList = delete(workingList,1);
     }
 
-    // 2.b. Run currentLoad parallel tropicalTraversalStep
+    // 2.b. Run currentLoad parallel tropicalNeighboursCone
     out = parallelWaitAll(command,args);
 
-    // 2.c. Parse currentLoad outputs of tropicalTraversalStep,
+    // 2.c. Parse currentLoad outputs of tropicalNeighboursCone,
     //        and count the total number of newCones and newLinks
     newNeighbours = list();
     newCones = list();
@@ -1308,7 +1418,7 @@ proc traverseInteriourPointSSI(intvec interiourPoint, string filename, alias lis
   close(ssiLink);
   setUniformizingParameter(par(1));
 
-  list neighbourCones = tropicalTraversalPartialIterationStep(I, interiourPoint);
+  list neighbourCones = tropicalNeighboursLink(I, interiourPoint);
   list points;
   for (int i = 1; i <= size(neighbourCones); i++)
   {

@@ -43,11 +43,8 @@ PROCEDURES:
 LIB "gfan.lib";
 LIB "triang.lib";
 LIB "linalg.lib";
-<<<<<<< HEAD
 LIB "ring.lib";
-=======
 LIB "tropicalPuiseux.lib";
->>>>>>> new: tropicalVariety.lib
 proc mod_init()
 {
   option(noredefine);
@@ -124,23 +121,7 @@ EXAMPLE: example val; shows an example
     return (0);
   }
 
-<<<<<<< HEAD
-  int vc = 0;
-  if (pardeg(uniformizingParameter)>0)
-  {
-    def origin = basering;
-    number c_denom = denominator(c);
-    number c_num = numerator(c);
-    ring r_Val = create_ring(0, string(uniformizingParameter), "ds");
-    poly c_denom = imap(origin,c_denom);
-    poly c_num = imap(origin,c_num);
-    vc = ord(c_num)-ord(c_denom);
-    setring origin;
-  }
-  else
-=======
   if (typeof(c)=="number")
->>>>>>> new: tropicalVariety.lib
   {
     if (c==0)
     {
@@ -580,11 +561,7 @@ EXAMPLE: example tropicalPointNewton; shows an example
   subststr = string(subststr[1..size(subststr)-1])+");";
   execute(subststr);
 
-<<<<<<< HEAD
   ring s = create_ring(ringlist(origin)[1], "("+vars+")", "lp", "no_minpoly");
-=======
-  execute("ring s = ("+charstr(origin)+"),("+vars+"),lp;");
->>>>>>> new: tropicalVariety.lib
   ideal J = imap(origin,J);
   int tstdlp = timer;
   dbprint("computing triangular decomposition (picking first factor)");
@@ -964,11 +941,7 @@ static proc substRing(int i, string orderstring)
       intvec p = 1..i-1,i+1..n;
     }
   }
-<<<<<<< HEAD
   ring ssub = create_ring("(0,t)", "("+varstrIntvec(p)+")", orderstring);
-=======
-  execute("ring ssub = (0,t),("+varstrIntvec(p)+"),"+orderstring+";");
->>>>>>> new: tropicalVariety.lib
   return (ssub);
 }
 

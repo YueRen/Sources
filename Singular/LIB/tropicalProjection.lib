@@ -290,12 +290,12 @@ static proc doMerge(list workingList, ideal stdI, number uniformizingParameter, 
   {
     if(typeof(workingList[i][1]) == "intvec")
     {
-      // compute tropical projection
+      // read tropical projection
       ii++;
       intvec u = workingList[i][1];
       list WMproj = outs[ii][1];
       list Wproj = WMproj[1]; // projected points
-      list Mproj = WMproj[2]; // projected multiplicities
+      intvec Mproj = WMproj[2]; // projected multiplicities
 
       dbprint("direction: "+string(u));
       dbprint("points: "+string(Wproj));
@@ -308,17 +308,9 @@ static proc doMerge(list workingList, ideal stdI, number uniformizingParameter, 
       list candidateMultiplicities;
       for (int j=1; j<=size(candidateSet); j++)
       {
-        list candidate = candidateSet[j];
-
         // compute projection of candidate
-        number candidateProjected = 0;
-        for (int k=1; k<=size(candidate); k++)
-        {
-          if (typeof(candidate[k])=="number")
-          {
-            candidateProjected = candidateProjected-candidate[k]*u[k];
-          }
-        }
+        list candidate = candidateSet[j];
+        intvec candidateProjected = homogenizedDotProduct(candidate,u);
 
         // test whether candidateProjected occurs in Wproj
         int k=1;
@@ -398,7 +390,7 @@ example
   tNormal;
 }
 
-static proc isSlimUnimodularTransformation(intvec u)
+proc isSlimUnimodularTransformation(intvec u)
 "USAGE: isSlimUnimodularTransformation(intvec u);
 RETURN: 0, if u is not a vector specifying a slim unimodular transformation,
         otherwise the index 0<ell<=nvars(basering)
@@ -509,17 +501,15 @@ EXAMPLE: example tropicalVarietyUnivariate; shows an example
 
   // 4.a extract slope enumerators and denominators
   //      and compute the multiplicities
-  intvec slopesEnum;
-  intvec slopesDenom;
+  list slopes;
   intvec multiplicities;
-  int kSlopes = 0;
+  int nSlopes = 0;
   for (int i=nrows(F); i>0; i--)
   {
     if (F[i,3]>0) // if edge is bounded
     {
-      kSlopes++;
-      slopesEnum[kSlopes] = F[i,2];
-      slopesDenom[kSlopes] = F[i,3];
+      nSlopes++;
+      slopes[nSlopes] = primitive(intvec(F[i,3],F[i,2]));
 
       // compute which vertices lie on the bounded edge
       intvec edgeNormal = F[i,1..3];
@@ -532,29 +522,20 @@ EXAMPLE: example tropicalVarietyUnivariate; shows an example
           edgeDegrees[size(edgeDegrees)+1] = V[j,2];
         }
       }
-
-      multiplicities[kSlopes] = absValue(edgeDegrees[1]-edgeDegrees[2]);
+      multiplicities[nSlopes] = absValue(edgeDegrees[1]-edgeDegrees[2]);
     }
   }
 
-  // 4.b construct the homogenized slopes
-  intvec slopes;
-  slopes[1] = lcm(slopesDenom);
-  for (int i=kSlopes; i>0; i--)
-  {
-    slopes[i+1] = slopesEnum[i] * (slopes[1] div slopesDenom[i]);
-  }
+  // // 4.c sort slopes in ascending order and multiplities accordingly
+  // list slopesUnsorted = slopes[2..kSlopes+1];
+  // intvec multiplicitiesUnsorted = multiplicities;
 
-  // 4.c sort slopes in ascending order and multiplities accordingly
-  list slopesUnsorted = slopes[2..kSlopes+1];
-  intvec multiplicitiesUnsorted = multiplicities;
+  // list sortOut = sort(slopesUnsorted);
+  // list sortList = sortOut[1];
+  // intvec sortPerm = sortOut[2];
 
-  list sortOut = sort(slopesUnsorted);
-  list sortList = sortOut[1];
-  intvec sortPerm = sortOut[2];
-
-  slopes = slopes[1],sortList[1..kSlopes];
-  multiplicities = multiplicities[sortPerm];
+  // slopes = slopes[1],sortList[1..kSlopes];
+  // multiplicities = multiplicities[sortPerm];
 
   return (list(slopes,multiplicities));
 }
@@ -697,13 +678,11 @@ EXAMPLE: smallestFeasibleProjection; shows an example
         {
           u[i+1..kSupp] = Uj[i-1..kSupp-2];
         }
-        u;
-
-        if(isInjective(candidatesCompresseed,u))
+        if(isInjective(candidatesCompressed,u))
         {
           // if injective decompress u and return it
           intvec uResult;
-          uResult[nvars(basering)] = 0;
+          uResult[nvars(basering)+1] = 0;
           uResult[support] = u;
           return (uResult);
         }
@@ -722,6 +701,7 @@ example
   list A3 = list(1,o,o,2,o),list(1,o,o,3,o),list(1,o,o,4,o),list(1,o,o,5,o);
   list A = A1,A2,A3;
   list cs = candidateSet(A);
+  listOfIncompleteVectorsPrettyPrint(cs,0);
   smallestFeasibleProjection(cs);
 
   list B1 = list(1,0,o,o,o),list(1,1,o,o,o),list(1,2,o,o,o),list(1,3,o,o,o);
@@ -729,6 +709,7 @@ example
   list B3 = list(3,o,o,2,o),list(4,o,o,3,o),list(5,o,o,4,o),list(6,o,o,5,o);
   list B = B1,B2,B3;
   list cs = candidateSet(B);
+  listOfIncompleteVectorsPrettyPrint(cs,0);
   smallestFeasibleProjection(cs);
 }
 
@@ -760,22 +741,32 @@ static proc sortBySupport(list P)
   return(Psorted);
 }
 
+static proc homogenizedDotProduct(def v, intvec u)
+{
+  intvec vu = v[1]*u[1],0;
+  for (int i=size(v); i>1; i--)
+  {
+    if (typeof(v[i])=="int") // v could be an incomplete vector
+    {
+      vu[2] = vu[2]-v[i]*u[i];
+    }
+  }
+  vu = primitive(vu);
+  return (vu);
+}
+
 // tests whether w |-> u*w is injective on the rows of candidateMatrix
 // NOTE: rows of candidateMatrix are HOMOGENIZED vectors, i.e.
 //         ncols(candidateMatrix) == size(u)+1
-static proc isInjective(intmat candidateMatrix, intvec u)
+proc isInjective(intmat candidateMatrix, intvec u)
 {
-  intmat uTranspose = transpose(u);
   int r = nrows(candidateMatrix);
   int c = ncols(candidateMatrix);
 
   list candidateProjections;
   for (int i=1; i<=r; i++)
   {
-    intvec candidateProjection;
-    candidateProjection[1] = candidateMatrix[i,1];
-    candidateProjection[2] = uTranspose*intvec(candidateMatrix[i,2..c]);
-    candidateProjections[i] = primitive(candidateProjection);
+    candidateProjections[i] = homogenizedDotProduct(intvec(candidateMatrix[i,1..c]),u);
 
     for (int j=1; j<i; j++)
     {
@@ -855,14 +846,26 @@ EXAMPLE: tropicalProjection, shows an example
     useModular = #[2];
   }
 
+  // dehomogenize u
+  if (u[1]!=1)
+  {
+    ERROR("tropicalProjection: input projection wrongly homogenized");
+  }
+  u = u[2..size(u)];
+
   // 0.3 sanity check optional parameters
   if (useModular==1 && char(basering)>0)
   {
     ERROR("tropicalProjection: positive characteristic incompatible with modular approach");
   }
+  if (useModular==1 && pardeg(uniformizingParameter)>0)
+  {
+    ERROR("tropicalProjection: unmixed characteristic incompatible with modular approach");
+  }
   int ell = isSlimUnimodularTransformation(u);
   if (ell==0)
   {
+    ~;
     ERROR("tropicalProjection: input projection direction invalid");
   }
   if (attrib(stdI,"isSB")==0)
@@ -923,7 +926,7 @@ EXAMPLE: tropicalProjection, shows an example
   }
 
   // 1.1 apply transformation
-  ring rShort = 0,var(n),dp;
+  execute("ring rShort = ("+charstr(rOrigin)+"),var(n),dp;");
   poly f(n) = imap(rOrigin,f(n));
   poly g = fastExponentiation(var(1),u[n],f(n));
   for (int i=n-1; i>0; i--)
@@ -937,7 +940,7 @@ EXAMPLE: tropicalProjection, shows an example
 
   // 2. construct bivariate polynomial ring
   setring rOrigin;
-  ring rBivariate = 0,(var(n),var(ell)),dp;
+  execute("ring rBivariate = ("+charstr(rOrigin)+"),(var(n),var(ell)),dp;");
   poly f = imap(rOrigin,f(n));
   poly g = imap(rShort,g);
   poly h = imap(rOrigin,f(ell));
@@ -948,7 +951,7 @@ EXAMPLE: tropicalProjection, shows an example
     IBivar = cleardenom(f),cleardenom(g*var(2)-h);
   }
   else
-  { // Case 2: u general, invert h
+  { // Case 2: u general, invert h instead
     IBivar = cleardenom(f),cleardenom(h*var(2)-g);
     reverse = 1;
   }
@@ -978,17 +981,28 @@ EXAMPLE: tropicalProjection, shows an example
 example
 {
   "EXAMPLE:"; echo = 2;
-  ring r = 0,(x,y,z,w),lp;
-  number uniformizingParameter = 2;
+  // ring r = 0,(x,y,z,w),lp;
+  // number uniformizingParameter = 2;
+  // ideal I =
+  //   (x-1)*(x-2)*(x-4)*(x-6)*(x-8),
+  //   y-2x,
+  //   z-2y,
+  //   w-2z;
+  // ideal stdI = std(I);
+  // tropicalProjection(stdI,-unitVector(4,1),uniformizingParameter,"minpoly",1);
+  // tropicalProjection(stdI,-unitVector(4,2),uniformizingParameter,"fglm",1);
+  // tropicalProjection(stdI,-unitVector(4,3),uniformizingParameter,"resultant",1);
+  ring s = (0,t),(x,y,z,w),lp;
+  number uniformizingParameter = t;
   ideal I =
-    (x-1)*(x-2)*(x-4)*(x-6)*(x-8),
-    y-2x,
-    z-2y,
-    w-2z;
+    (x-1)*(x-t)*(x-t2)*(x-3t)*(x-t3),
+    y-tx,
+    z-ty,
+    w-tz;
   ideal stdI = std(I);
-  tropicalProjection(stdI,-unitVector(4,1),uniformizingParameter,"minpoly",1);
-  tropicalProjection(stdI,-unitVector(4,2),uniformizingParameter,"fglm",1);
-  tropicalProjection(stdI,-unitVector(4,3),uniformizingParameter,"resultant",1);
+  tropicalProjection(stdI,-unitVector(4,1),uniformizingParameter,"minpoly");
+  tropicalProjection(stdI,-unitVector(4,2),uniformizingParameter,"fglm");
+  tropicalProjection(stdI,-unitVector(4,3),uniformizingParameter,"resultant");
 }
 
 proc mergeStrat(string strat, list #)
@@ -1168,7 +1182,9 @@ EXAMPLE: example tropicalVarietyViaProjection; shows an example
     list args;
     for (int i=1; i<=n; i++)
     {
-      args[i] = list(stdI,-unitVector(n,i),uniformizingParameter,"fglm",useModular);
+      intvec hi = -unitVector(n+1,i+1);
+      hi[1] = 1;
+      args[i] = list(stdI,hi,uniformizingParameter,"fglm",useModular);
     }
     list out = fakeParallelWaitAll("tropicalProjection",args);
     // read off all tropical projections
@@ -1238,16 +1254,16 @@ EXAMPLE: example tropicalVarietyViaProjection; shows an example
   for (int i=1; i<=n; i++)
   {
     list Lambda; // projection onto i-th coordinate
-    for(int j = 2; j <= size(WM[i][1]); j++)
+    for(int j = 1; j <= size(WM[i][1]); j++)
     {
       list lambda; // projected point
-      lambda[1] = WM[i][1][1];   // homogenization entry
-      lambda[i+1] = WM[i][1][j];
-      Lambda[j-1] = lambda;
+      lambda[n+1] = def(0);
+      lambda[1] = WM[i][1][j][1];   // homogenization entry
+      lambda[i+1] = WM[i][1][j][2];
+      Lambda[j] = lambda;
     }
     workingList[i] = list(Lambda,WM[i][2]);
   }
-  ~;
 
   // END: STATE 1 with size(workingList)==1
   int tPickTotal = 0;
@@ -1274,9 +1290,8 @@ EXAMPLE: example tropicalVarietyViaProjection; shows an example
   dbprint("total time of pickMerge: "+string(tPickTotal));
   dbprint("total time of doMerge: "+string(tMergeTotal));
 
-  ring lexRing = basering;
   setring rOrigin;
-  list TropI = imap(lexRing,workingList)[1];
+  list TropI = workingList[1];
   matrix W[size(TropI[1])][nvars(basering)];
   intvec multiplicities;
   for(int i = 1; i <= nrows(W); i++)
@@ -1446,7 +1461,7 @@ static proc holdEntryPrettyPrint(list holdEntry, int indent)
   return (printString);
 }
 
-static proc listOfIncompleteVectorsPrettyPrint(list W, int indent)
+proc listOfIncompleteVectorsPrettyPrint(list W, int indent)
 {
   string printString;
   for (int i=1; i<=size(W); i++)
@@ -1456,14 +1471,14 @@ static proc listOfIncompleteVectorsPrettyPrint(list W, int indent)
   return (printString);
 }
 
-static proc incompleteVectorPrettyPrint(list w, int indent)
+proc incompleteVectorPrettyPrint(list w, int indent)
 {
   string printString;
   for (int i=1; i<=indent; i++)
   {
     printString = printString+" ";
   }
-  for (int j=1; j<=nvars(basering); j++)
+  for (int j=1; j<=nvars(basering)+1; j++)
   {
     if (typeof(w[j])!="none")
     {
@@ -1577,20 +1592,20 @@ proc binaryEliminantMinpoly(ideal I) // assumption: I = (f(x), h(x)*y-g(x)).
   ideal hPows = 1;  // hPows[i] = h^(i-1) mod f
   for(int i = 1; i <= d; i++)
   {
-    gPows = gPows,reduce(g*gPows[i],f);
-    hPows = hPows,reduce(h*hPows[i],f);
+    gPows[i+1] = reduce(g*gPows[i],f);
+    hPows[i+1] = reduce(h*hPows[i],f);
   }
 
   // 2. put together the products g^i*h^j mod f for i+j = d
   ideal ghProds = hPows[d+1];  //ghProds[i] = g^(i-1)*h^(d-i+1)
   for(int i = 2; i <= d+1; i++)
   {
-    ghProds = ghProds,reduce(gPows[i]*hPows[d-i+2],f);
+    ghProds[i] = reduce(gPows[i]*hPows[d-i+2],f);
   }
   matrix M = coeffs(ghProds,var(1));
 
   // 3. compute a vector in the kernel of M with minimal support
-  ring rLinAlg = char(rOrigin),(a(1..d+1)),lp;
+  execute("ring rLinAlg = ("+charstr(rOrigin)+"),(a(1..d+1)),lp;");
   matrix aVec[d+1][1];
   for(int i = 1; i <= d+1; i++)
   {
@@ -1612,7 +1627,6 @@ proc binaryEliminantMinpoly(ideal I) // assumption: I = (f(x), h(x)*y-g(x)).
   {
     mPCoeff[i,1] = leadcoef(var(i)-linSol[d+1-i]);
   }
-
   setring rOrigin;
   matrix mPCoeff = imap(rLinAlg,mPCoeff);
   poly mP = 0;

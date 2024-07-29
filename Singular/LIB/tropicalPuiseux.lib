@@ -1,0 +1,265 @@
+version="version tropicalPuiseux.lib 4.0.3.3 Nov_2017 "; // $Id$
+category="Commutative Algebra";
+info="
+LIBRARY:  tropicalPuiseux.lib  tropical Varieties with puiseux series
+AUTHORS:  D. Bendle (...)
+
+OVERVIEW:
+  Computes zero dimensional tropical varieties by computing the variety in the
+  puiseux series ring up to a finite order and then taking valuations.
+
+PROCEDURES:
+ tropicalVarietyPuiseux(I, #);     tropical variety of I
+";
+LIB "puiseux.lib";
+
+// tropical varieties of zero dimensional triangular ideals
+
+proc tropicalVarietyPuiseux(ideal I, list #)
+"USAGE: tropicalVarietyPuiseux(I[, opt]), I ideal, opt intvec
+ASSUME: I is a triangular zero dimensional standard basis in a ring with
+        transcendental ring extension representing the puiseux variable and
+        V(I) is contained in the torus (K^*)^n.
+RETURN: Tropical variety of I. If opt is given and b := opt[1] > 0, then only
+        compute the pointf in Trop(I) in the box [-b, b]^n. If opt[2] > 0 then
+        only compute one point on Trop(I)
+THEORY: Internally computes puiseux expansions up to a given order of
+        univariate polynomials over Q{{t}} and substitutes them into the
+        multivariate polynomials to again yield univariate ones, effectively
+        computing an approximation of V(I). Then takes valuations of elements
+        in V(I) to get Trop(I).
+EXAMPLE: example tropicalVarietyPuiseux; shows an example"
+{
+  intvec options = 0;
+  int i, j;
+  // optional input
+  for (i = 1; i <= size(#); i++)
+  {
+    if (typeof(#[1]) == "intvec")
+    {
+      options = #[1];
+    }
+  }
+
+  int single, bound = 0, 0;
+  if (size(options)>0)
+  {
+    single = options[1];
+    if (size(options)>1)
+    {
+      bound = options[2];
+    }
+  }
+
+  // given: Yue's format QQ(t)[x1..xn]
+  def R = basering;
+
+  if (npars(R) <> 1)
+  {
+    ERROR("tropicalVarietyPuiseux: ring has wrong format");
+  }
+  if (dim(I)>0)
+  {
+    ERROR("tropicalVarietyPuiseux: ideal is not zero-dimensional");
+  }
+
+  // choose order from ideal max degree
+  int order = deg(I)+5;
+  // As ideals are Groebenr bases they will have no fractional coefficients
+  execute("ring newRing = 0,(" + parstr(R,1) + "," + varstr(R) + "),(L(2^20),lp);");
+
+  ideal I = imap(R, I);
+  int n = nvars(newRing)-1;
+  list vals;
+  // returns empty list in case bound p is too small
+  while (size(vals) == 0)
+  {
+    vals = tropVarInAdaptedRing(I, order, bound, single);
+    order = order + 10;
+
+    // temporary: exponents in Singular are too small by default, so computing
+    // up to larger orders yields exponent overflows. Until this is adressed in
+    // a reliable fashion keep this
+    if (order>100)
+    {
+      ERROR("Singular can't do this");
+    }
+  }
+  setring R;
+  list roots = fetch(newRing, vals);
+
+  return(uniqueElements(roots));
+}
+example
+{
+  "EXAMPLE"; echo = 1;
+  ring R = (0,t),(z,y,x),lp;
+  // cannot be computed with Newton polygon method
+  ideal I = x2+tx-1,y2+t2y-1,tz2+(x-y)*z+1;
+  I = std(I);
+
+  list L = tropicalVarietyPuiseux(I); L;
+}
+
+static proc tropVarInAdaptedRing(ideal I, int p, int bound, int single)
+{
+  def origin = basering;
+  int n = nvars(origin)-1;
+  list expansions = list(list());
+  list expTmp, pExpTmp;
+  int numroots;
+  int i, ii, j, k;
+  intvec pDeg;
+
+  // "true" degree weight as var(1) is no variable
+  intvec w = 1:(n+1); w[1] = 0;
+
+  for (i = 1; i <= n; i++)
+  {
+    expTmp = expansions;
+    expansions = list();
+
+    // var in elimination ordering
+    ii = n - i + 1;
+
+    numroots = size(expTmp);
+    for (j = 1; j <= numroots; j++)
+    {
+      Puiseux ps = I[i];
+      for (k = n; k > ii; k--)
+      {
+        // iteratively switch rings
+        ps = extendBaseringPuiseux(ps, expTmp[j][k].in);
+        ps = substPuiseux(ps, k+1, expTmp[j][k]);
+      }
+      // if we get zero/constant too early we need to increase deg bound
+      pDeg = puiDeg(ps, w);
+      if (pDeg[1] == -1 || (pDeg[1] <= 0 && pDeg[2] <= 0))
+      {
+        "substitution yields constant term";
+        return(list());
+      }
+      pExpTmp = puiseuxList(ps, p, 1, ii+1);
+      for (k = 1; k <= size(pExpTmp); k++)
+      {
+        expTmp[j][ii] = pExpTmp[k];
+        expansions[size(expansions)+1] = expTmp[j];
+      }
+      kill ps;
+    }
+  }
+
+  // convert lists of numbers to matrices
+  // remove out of bounds solutions and return first solution if necessary
+  list valuations;
+  matrix valTmp[1][n];
+  int addToSolutions;
+  for (i = 1; i<= size(expansions); i++)
+  {
+    addToSolutions = 1;
+    for (j = 1; j <= n; j++)
+    {
+      def v = puiseuxValuation(expansions[i][j]);
+      // if expansion is zero, i.e. has infinite valuation
+      if (typeof(v) == "none")
+      {
+        addToSolutions = 0;
+        kill v;
+        break;
+      }
+      // if valuation out of bounds
+      if (bound > 0 && v > number(bound))
+      {
+        addToSolutions = 0;
+        kill v;
+        break;
+      }
+      valTmp[1,j] = v;
+      kill v;
+    }
+    if (addToSolutions)
+    {
+      valuations[size(valuations)+1] = valTmp;
+    }
+    if (single && size(valuations)>0)
+    {
+      break;
+    }
+  }
+  return(valuations);
+}
+
+// valuation for the format used in puiseux.lib
+static proc puiseuxValuation(Puiseux f)
+{
+  def origin = basering;
+  def S = f.in;
+  setring S;
+  if (f.numer == 0)
+  {
+    setring origin;
+    return(def(0));
+  }
+  else
+  {
+    int n = polyValuation(f.numer);
+    int d = polyValuation(f.denom);
+    setring origin;
+    return (-number(n-d)/number(f.fraction));
+  }
+}
+
+// naive implementation
+static proc polyValuation(poly f)
+{
+  intvec w = 0:nvars(basering); w[1] = 1;
+  int m = size(f);
+  int v = deg(f,w);
+  // should be catched before reaching this procedure
+  if (v < 0) { ERROR("polyValuation: root outside torus"); }
+  for (int i = 1; i <= m; i++)
+  {
+    v = min(v, deg(f[i], w));
+  }
+  return(v);
+}
+
+proc puiDeg(Puiseux p, intvec w)
+{
+  intvec d = 0,0;
+  def S = p.in;
+  def origin = basering;
+  setring S;
+  d[1] = deg(p.numer, w);
+  d[2] = deg(p.denom, w);
+  setring origin;
+  return(d);
+}
+
+proc uniqueElements(list L)
+{
+  list uniq = list();
+  int i, j, ix;
+  for (i = 1; i <= size(L); i++)
+  {
+    ix = size(uniq);
+    for (j = 1; j <= size(uniq); j++)
+    {
+      if (L[i] == uniq[j])
+      {
+        ix = -1;
+        break;
+      }
+      if (L[i] < uniq[j])
+      {
+        ix = j - 1;
+        break;
+      }
+    }
+    if (ix >= 0)
+    {
+      uniq = insert(uniq, L[i], ix);
+    }
+  }
+  return(uniq);
+}
